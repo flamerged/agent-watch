@@ -1,6 +1,6 @@
 #!/bin/zsh
 # <xbar.title>Agent Watch</xbar.title>
-# <xbar.version>v0.2.0</xbar.version> # x-release-please-version
+# <xbar.version>v0.3.0</xbar.version> # x-release-please-version
 # <xbar.author>flamerged</xbar.author>
 # <xbar.author.github>flamerged</xbar.author.github>
 # <xbar.desc>Shows local coding agents, model/provider targets, folders, versions, helper processes, and local LLM backends.</xbar.desc>
@@ -19,14 +19,14 @@
 # <xbar.var>string(AGENTWATCH_REPO_URL="https://github.com/flamerged/agent-watch"): Agent Watch repository URL</xbar.var>
 # <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
-# <swiftbar.version>v0.2.0</swiftbar.version> # x-release-please-version
+# <swiftbar.version>v0.3.0</swiftbar.version> # x-release-please-version
 # <swiftbar.author>flamerged</swiftbar.author>
 # <swiftbar.desc>Shows local coding agents, model/provider targets, folders, versions, helper processes, and local LLM backends.</swiftbar.desc>
 # <swiftbar.refresh>30s</swiftbar.refresh>
 
 set -u
 
-PLUGIN_VERSION="0.2.0" # x-release-please-version
+PLUGIN_VERSION="0.3.0" # x-release-please-version
 PLUGIN_PATH="${0:A}"
 PLUGIN_DIR="${PLUGIN_PATH:h}"
 CONFIG_FILE="${AGENTWATCH_CONFIG_FILE:-$HOME/.config/agent-watch/config.env}"
