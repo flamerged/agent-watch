@@ -6,6 +6,11 @@
 # <xbar.desc>Shows local coding agents, model/provider targets, folders, versions, helper processes, and local LLM backends.</xbar.desc>
 # <xbar.dependencies>zsh, ps, lsof, curl, jq</xbar.dependencies>
 # <xbar.abouturl>https://github.com/flamerged/agent-watch</xbar.abouturl>
+# <xbar.var>string(AGENTWATCH_OMLX_URL="http://127.0.0.1:8000"): oMLX server URL</xbar.var>
+# <xbar.var>string(AGENTWATCH_OLLAMA_URL="http://127.0.0.1:11434"): Ollama server URL</xbar.var>
+# <xbar.var>string(AGENTWATCH_AGENTMEMORY_URL="http://127.0.0.1:3111"): AgentMemory API URL</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_SHOW_COMMANDS=false): Show redacted process commands</xbar.var>
+# <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3111,3112,3113,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
 # <swiftbar.version>v0.1.0</swiftbar.version>
 # <swiftbar.author>flamerged</swiftbar.author>

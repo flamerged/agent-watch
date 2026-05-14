@@ -72,7 +72,9 @@ Agent Watch works without configuration, but these environment variables can tai
 
 Agent Watch is intended for local observability. It does not send telemetry.
 
-By default it reads local process metadata, selected local config files, and local HTTP status endpoints. Process command lines are hidden by default because they can contain sensitive arguments. If `AGENTWATCH_SHOW_COMMANDS=1` is enabled, commands are still passed through a redactor for common API keys, bearer tokens, GitHub tokens, Anthropic/OpenAI-style keys, Gemini keys, Slack tokens, and Context7 tokens.
+By default it inspects the local process table with `ps`, working directories and listening ports with `lsof`, selected local config files listed above, and local HTTP status endpoints for oMLX, Ollama, and AgentMemory. It does not inspect arbitrary project files.
+
+Process command lines are hidden by default because they can contain sensitive arguments. If `AGENTWATCH_SHOW_COMMANDS=1` is enabled, commands are still passed through a redactor for common API keys, bearer tokens, GitHub tokens, Anthropic/OpenAI-style keys, Gemini keys, Slack tokens, and Context7 tokens.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
