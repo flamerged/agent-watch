@@ -10,7 +10,7 @@
 # <xbar.var>string(AGENTWATCH_OLLAMA_URL="http://127.0.0.1:11434"): Ollama server URL</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_COMMANDS=false): Show redacted process commands</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_HELPERS=false): Show individual MCP/helper processes</xbar.var>
-# <xbar.var>boolean(AGENTWATCH_CHECK_UPDATES=false): Check latest CLI versions from package registries</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_CHECK_UPDATES=true): Check latest CLI versions from package registries</xbar.var>
 # <xbar.var>string(AGENTWATCH_UPDATE_TTL_SECONDS="86400"): Seconds between update checks when enabled</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_CONFIG_ACTIONS=false): Show config-file open actions</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_BACKEND_ACTIONS=false): Show detected backend web/log open actions</xbar.var>
@@ -95,7 +95,7 @@ OMLX_KEY_FILE="${AGENTWATCH_OMLX_API_KEY_FILE:-}"
 OMLX_API_KEY="${AGENTWATCH_OMLX_API_KEY:-}"
 SHOW_COMMANDS="${AGENTWATCH_SHOW_COMMANDS:-0}"
 SHOW_HELPERS="${AGENTWATCH_SHOW_HELPERS:-0}"
-CHECK_UPDATES="${AGENTWATCH_CHECK_UPDATES:-0}"
+CHECK_UPDATES="${AGENTWATCH_CHECK_UPDATES:-1}"
 UPDATE_TTL_SECONDS="${AGENTWATCH_UPDATE_TTL_SECONDS:-86400}"
 UPDATE_CACHE="${AGENTWATCH_UPDATE_CACHE:-$HOME/.cache/agent-watch/cli-updates.tsv}"
 SHOW_CONFIG_ACTIONS="${AGENTWATCH_SHOW_CONFIG_ACTIONS:-0}"
@@ -741,7 +741,10 @@ open_ports_rows() {
         gsub(/,/, "|", ports)
         pattern = ":(" ports ")$"
       }
-      NR > 1 && ($9 ~ pattern) {print $1 "|" $2 "|" $9}
+      NR > 1 && ($9 ~ pattern) {
+        key = $1 "|" $2 "|" $9
+        if (!seen[key]++) print $1 "|" $2 "|" $9
+      }
     ' \
     | while IFS='|' read -r proc pid addr; do
       emit "--${addr} · ${proc} pid ${pid} | font=Menlo"
@@ -851,6 +854,7 @@ fi
 if [[ -n "$INTERESTING_PORTS" ]]; then
   emit "---"
   emit "Interesting Listening Ports"
+  emit "--Filter: ${INTERESTING_PORTS} | color=gray"
   open_ports_rows
 fi
 

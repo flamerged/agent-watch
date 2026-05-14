@@ -10,7 +10,7 @@ It is built for local agent-heavy development setups with tools such as Codex, C
 - Detects local LLM and helper backends, including Ollama, oMLX, and optional AgentMemory.
 - Groups known MCP/helper processes by owner and type, with per-process debug output behind `AGENTWATCH_SHOW_HELPERS=1`.
 - Shows installed coding CLIs and versions when they are discoverable on `PATH`.
-- Supports opt-in cached update checks for npm-distributed CLIs with `AGENTWATCH_CHECK_UPDATES=1`; checks are spaced by `AGENTWATCH_UPDATE_TTL_SECONDS`.
+- Supports cached update checks for npm-distributed CLIs; checks are spaced by `AGENTWATCH_UPDATE_TTL_SECONDS`.
 - Hides process command lines by default. Optional redacted command output can be enabled with `AGENTWATCH_SHOW_COMMANDS=1`.
 - Uses only local process inspection and local HTTP endpoints by default.
 
@@ -68,7 +68,7 @@ Agent Watch works without configuration, but these environment variables can tai
 | `AGENTWATCH_OMLX_API_KEY_FILE` | empty | Optional file containing the oMLX bearer token |
 | `AGENTWATCH_SHOW_COMMANDS` | `0` | Set to `1` to show redacted process commands |
 | `AGENTWATCH_SHOW_HELPERS` | `0` | Set to `1` to show individual MCP/helper processes |
-| `AGENTWATCH_CHECK_UPDATES` | `0` | Set to `1` to enable cached update checks |
+| `AGENTWATCH_CHECK_UPDATES` | `1` | Set to `0` to disable cached update checks |
 | `AGENTWATCH_UPDATE_TTL_SECONDS` | `86400` | Minimum seconds between automatic registry checks when update checks are enabled |
 | `AGENTWATCH_UPDATE_CACHE` | `$HOME/.cache/agent-watch/cli-updates.tsv` | Update check cache path |
 | `AGENTWATCH_SHOW_CONFIG_ACTIONS` | `0` | Set to `1` to show local config-file open actions |
@@ -83,9 +83,11 @@ By default it inspects the local process table with `ps`, working directories an
 
 Process command lines are hidden by default because they can contain sensitive arguments. If `AGENTWATCH_SHOW_COMMANDS=1` is enabled, commands are still passed through a redactor for common API keys, bearer tokens, GitHub tokens, Anthropic/OpenAI-style keys, Gemini keys, Slack tokens, and Context7 tokens.
 
-Update checks are disabled by default. When enabled, Agent Watch uses package registry lookups only to refresh a local cache, not on every menu refresh.
+Update checks are enabled by default. Agent Watch uses package registry lookups only to refresh a local cache, not on every menu refresh.
 
 The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to adjust that interval, or use the menu action to refresh the cache manually.
+
+The "Interesting Listening Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
