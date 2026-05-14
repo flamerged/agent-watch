@@ -113,7 +113,7 @@ The checks run `zsh -n` and a smoke execution with command output disabled.
 
 PR titles should use Conventional Commits. `fix:` and `perf:` changes produce patch releases, `feat:` changes produce minor releases, and breaking changes produce major releases.
 
-Release Please opens and maintains the release PR from commits on `main`. Merging that release PR creates the GitHub release and tag.
+After a releasable PR is squash-merged to `main`, the release workflow tags the merge commit and creates the GitHub Release. It also uploads a release copy of `agent-watch.30s.sh` with the release version embedded. It does not open a separate release PR.
 
 ## License
 

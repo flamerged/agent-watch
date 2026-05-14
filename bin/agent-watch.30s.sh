@@ -226,6 +226,23 @@ plugin_git_summary() {
   emit "${branch:-detached} ${sha:-unknown}${state}"
 }
 
+plugin_version_label() {
+  local root="${1:-}" exact desc
+  if [[ -n "$root" ]] && command -v git >/dev/null 2>&1; then
+    exact="$(git -C "$root" describe --tags --exact-match --match 'v[0-9]*' HEAD 2>/dev/null)"
+    if [[ -n "$exact" ]]; then
+      emit "$exact"
+      return
+    fi
+    desc="$(git -C "$root" describe --tags --match 'v[0-9]*' --long --always HEAD 2>/dev/null)"
+    if [[ "$desc" == v* ]]; then
+      emit "$desc"
+      return
+    fi
+  fi
+  emit "v${PLUGIN_VERSION}"
+}
+
 update_plugin_from_git() {
   local root
   root="$(plugin_repo_root)"
@@ -235,6 +252,7 @@ update_plugin_from_git() {
     return 1
   fi
   print "Updating Agent Watch in $root"
+  git -C "$root" fetch --tags --prune
   git -C "$root" pull --ff-only
 }
 
@@ -883,11 +901,12 @@ open_ports_rows() {
 }
 
 print_plugin_rows() {
-  local root git_summary
-  emit "--Version: v${PLUGIN_VERSION} | font=Menlo"
+  local root git_summary version_label
+  root="$(plugin_repo_root)"
+  version_label="$(plugin_version_label "$root")"
+  emit "--Version: ${version_label} | font=Menlo"
   emit "--Config: $(shorten_path "$CONFIG_FILE") | font=Menlo"
   emit "--Script: $(shorten_path "$PLUGIN_PATH") | font=Menlo"
-  root="$(plugin_repo_root)"
   if [[ -n "$root" ]]; then
     git_summary="$(plugin_git_summary "$root")"
     emit "--Repo: $(shorten_path "$root") | font=Menlo"

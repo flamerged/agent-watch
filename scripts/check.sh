@@ -5,6 +5,7 @@ ROOT="${0:A:h:h}"
 PLUGIN="$ROOT/bin/agent-watch.30s.sh"
 
 zsh -n "$PLUGIN"
+bash -n "$ROOT/scripts/auto-release.sh"
 
 for tag in \
   '<xbar.title>' \
