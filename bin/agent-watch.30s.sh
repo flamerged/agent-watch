@@ -274,7 +274,7 @@ release_tag_norm() {
 latest_release_tag_from_asset_url() {
   local tag
   tag="$(emit "$RELEASE_ASSET_URL" | "$SED" -n 's#.*releases/download/\([^/]*\)/.*#\1#p' | head -1)"
-  [[ -n "$tag" ]] || return 1
+  [[ -n "$tag" && "$tag" != "latest" ]] || return 1
   emit "$tag"
 }
 
@@ -364,7 +364,8 @@ maybe_refresh_release_check() {
     return
   fi
   mkdir -p "${RELEASE_CHECK_CACHE:h}" 2>/dev/null || return
-  : > "${RELEASE_CHECK_CACHE}.lock" 2>/dev/null || return
+  [[ -n "$lock_age" ]] && rm -f "${RELEASE_CHECK_CACHE}.lock" 2>/dev/null || true
+  ( set -C; : > "${RELEASE_CHECK_CACHE}.lock" ) 2>/dev/null || return
   "$PLUGIN_PATH" check-release >/dev/null 2>&1 &
 }
 
