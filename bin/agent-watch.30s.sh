@@ -8,9 +8,10 @@
 # <xbar.abouturl>https://github.com/flamerged/agent-watch</xbar.abouturl>
 # <xbar.var>string(AGENTWATCH_OMLX_URL="http://127.0.0.1:8000"): oMLX server URL</xbar.var>
 # <xbar.var>string(AGENTWATCH_OLLAMA_URL="http://127.0.0.1:11434"): Ollama server URL</xbar.var>
-# <xbar.var>string(AGENTWATCH_AGENTMEMORY_URL="http://127.0.0.1:3111"): AgentMemory API URL</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_COMMANDS=false): Show redacted process commands</xbar.var>
-# <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3111,3112,3113,3000,4000,5000"): TCP ports to show</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_SHOW_HELPERS=false): Show individual MCP/helper processes</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_CHECK_UPDATES=false): Check latest CLI versions from package registries</xbar.var>
+# <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
 # <swiftbar.version>v0.1.0</swiftbar.version>
 # <swiftbar.author>flamerged</swiftbar.author>
@@ -20,6 +21,12 @@
 set -u
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+for extra_bin in "$HOME/.bun/bin" "$HOME/.cargo/bin" "$HOME/.local/share/mise/shims" "$HOME/.asdf/shims"; do
+  [[ -d "$extra_bin" ]] && export PATH="$extra_bin:$PATH"
+done
+for node_bin in "$HOME"/.nvm/versions/node/*/bin(N); do
+  export PATH="$node_bin:$PATH"
+done
 
 JQ="${AGENTWATCH_JQ:-$(command -v jq 2>/dev/null || true)}"
 CURL="${AGENTWATCH_CURL:-$(command -v curl 2>/dev/null || true)}"
@@ -84,6 +91,9 @@ OMLX_CHAT_URL="${AGENTWATCH_OMLX_CHAT_URL:-$OMLX_URL/admin/chat}"
 OMLX_KEY_FILE="${AGENTWATCH_OMLX_API_KEY_FILE:-}"
 OMLX_API_KEY="${AGENTWATCH_OMLX_API_KEY:-}"
 SHOW_COMMANDS="${AGENTWATCH_SHOW_COMMANDS:-0}"
+SHOW_HELPERS="${AGENTWATCH_SHOW_HELPERS:-0}"
+CHECK_UPDATES="${AGENTWATCH_CHECK_UPDATES:-0}"
+UPDATE_CACHE="${AGENTWATCH_UPDATE_CACHE:-$HOME/.cache/agent-watch/cli-updates.tsv}"
 
 OMLX_PORT="$(url_port "$OMLX_URL")"
 OLLAMA_PORT="$(url_port "$OLLAMA_URL")"
@@ -93,10 +103,76 @@ AGENTMEMORY_VIEWER_PORT="$(url_port "$AGENTMEMORY_VIEWER_URL")"
 [[ -z "$OLLAMA_PORT" ]] && OLLAMA_PORT="11434"
 [[ -z "$AGENTMEMORY_PORT" ]] && AGENTMEMORY_PORT="3111"
 [[ -z "$AGENTMEMORY_VIEWER_PORT" ]] && AGENTMEMORY_VIEWER_PORT="3113"
-INTERESTING_PORTS="${AGENTWATCH_INTERESTING_PORTS:-$OMLX_PORT,$OLLAMA_PORT,$AGENTMEMORY_PORT,3112,$AGENTMEMORY_VIEWER_PORT,3000,4000,5000}"
+INTERESTING_PORTS="${AGENTWATCH_INTERESTING_PORTS:-$OMLX_PORT,$OLLAMA_PORT,3000,4000,5000}"
+
+truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+update_cache_age() {
+  [[ -f "$UPDATE_CACHE" ]] || { print ""; return; }
+  if stat -f %m "$UPDATE_CACHE" >/dev/null 2>&1; then
+    stat -f %m "$UPDATE_CACHE"
+  elif stat -c %Y "$UPDATE_CACHE" >/dev/null 2>&1; then
+    stat -c %Y "$UPDATE_CACHE"
+  fi
+}
+
+npm_latest() {
+  local package="$1"
+  command -v npm >/dev/null 2>&1 || return
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 5 npm view "$package" version 2>/dev/null
+  else
+    npm view "$package" version 2>/dev/null
+  fi
+}
+
+write_update_cache() {
+  mkdir -p "${UPDATE_CACHE:h}" 2>/dev/null || return
+  local tmp="$UPDATE_CACHE.$$"
+  : > "$tmp" || return
+  local now latest
+  now="$(date +%s 2>/dev/null || print "0")"
+  for row in \
+    "codex	@openai/codex" \
+    "claude	@anthropic-ai/claude-code" \
+    "gemini	@google/gemini-cli"; do
+    local tool="${row%%	*}"
+    local package="${row#*	}"
+    command -v "$tool" >/dev/null 2>&1 || continue
+    latest="$(npm_latest "$package" | head -1)"
+    [[ -n "$latest" ]] && emit "${tool}	${latest}	${now}" >> "$tmp"
+  done
+  mv "$tmp" "$UPDATE_CACHE"
+}
+
+cached_latest_version() {
+  local tool="$1"
+  [[ -f "$UPDATE_CACHE" ]] || return
+  have "$AWK" || return
+  "$AWK" -F '\t' -v t="$tool" '$1 == t {print $2; exit}' "$UPDATE_CACHE" 2>/dev/null
+}
+
+maybe_refresh_update_cache() {
+  truthy "$CHECK_UPDATES" || return
+  local age now
+  age="$(update_cache_age)"
+  now="$(date +%s 2>/dev/null || print "0")"
+  if [[ -z "$age" || $(( now - age )) -gt 86400 ]]; then
+    "$0" check-updates >/dev/null 2>&1 &
+  fi
+}
 
 ACTION="${1:-}"
 case "$ACTION" in
+  check-updates)
+    write_update_cache
+    exit 0
+    ;;
   open)
     case "${2:-}" in
       codex-config) open_target "$CODEX_CONFIG" ;;
@@ -297,18 +373,19 @@ endpoint_label() {
   esac
 }
 
-typeset -A PS_PPID PS_ETIME PS_CMD AGENT_NAME
+typeset -A PS_PPID PS_RSS PS_ETIME PS_CMD AGENT_NAME
 typeset -a AGENT_PIDS MCP_PIDS BACKEND_PIDS
 
 process_rows() {
   have "$PS" || return
-  "$PS" -axo pid=,ppid=,etime=,command= 2>/dev/null \
-    || "$PS" -eo pid=,ppid=,etime=,args= 2>/dev/null
+  "$PS" -axo pid=,ppid=,rss=,etime=,command= 2>/dev/null \
+    || "$PS" -eo pid=,ppid=,rss=,etime=,args= 2>/dev/null
 }
 
-while read -r pid ppid etime cmd; do
+while read -r pid ppid rss etime cmd; do
   [[ -z "${pid:-}" || -z "${cmd:-}" ]] && continue
   PS_PPID[$pid]="$ppid"
+  PS_RSS[$pid]="$rss"
   PS_ETIME[$pid]="$etime"
   PS_CMD[$pid]="$cmd"
 
@@ -321,7 +398,10 @@ while read -r pid ppid etime cmd; do
   elif { [[ "$cmd" == claude* || "$cmd" == */claude\ * ]] && [[ "$cmd" != *"Claude.app"* ]]; }; then
     AGENT_NAME[$pid]="Claude Code"
     AGENT_PIDS+=("$pid")
-  elif [[ "$cmd" == opencode* || "$cmd" == */opencode\ * ]]; then
+  elif [[ "$cmd" == opencode* || "$cmd" == */opencode\ * || "$cmd" == *"/bin/opencode"* || "$cmd" == *"/.opencode"* || "$cmd" == *"opencode-ai"* ]]; then
+    if [[ "$cmd" == node\ *"/bin/opencode"* ]]; then
+      continue
+    fi
     AGENT_NAME[$pid]="OpenCode"
     AGENT_PIDS+=("$pid")
   elif [[ "$cmd" == *"/gemini --acp"* || "$cmd" == *" gemini --acp"* ]]; then
@@ -336,7 +416,7 @@ while read -r pid ppid etime cmd; do
   elif [[ "$cmd" == aider* || "$cmd" == */aider\ * ]]; then
     AGENT_NAME[$pid]="Aider"
     AGENT_PIDS+=("$pid")
-  elif [[ "$cmd" == *"agentmemory-mcp"* || "$cmd" == *"xcodebuildmcp"* || "$cmd" == *"context7-mcp"* || "$cmd" == *"mcp-server"* ]]; then
+  elif [[ "$cmd" == *"agentmemory-mcp"* || "$cmd" == *"@agentmemory/mcp"* || "$cmd" == *"xcodebuildmcp"* || "$cmd" == *"context7-mcp"* || "$cmd" == *"mcp-server"* ]]; then
     MCP_PIDS+=("$pid")
   elif [[ "$cmd" == *"omlx serve"* || "$cmd" == *"ollama serve"* || "$cmd" == *"agentmemory"*"/dist/cli.mjs"* || "$cmd" == *".local/bin/iii --config"* ]]; then
     BACKEND_PIDS+=("$pid")
@@ -407,9 +487,9 @@ model_for_agent() {
       ;;
     "OpenCode")
       if [[ -f "$OPENCODE_CONFIG" ]] && have "$JQ"; then
-        local locals
-        locals="$("$JQ" -r '.provider // {} | to_entries[] | select((.value.options.baseURL // "") | test("127.0.0.1|localhost")) | "\(.key) -> \(.value.options.baseURL)"' "$OPENCODE_CONFIG" 2>/dev/null | paste -sd ', ' -)"
-        [[ -n "$locals" ]] && print "$(shorten_text "$locals" 68)" || print "configured; active model unknown"
+        local local_count
+        local_count="$("$JQ" '[.provider // {} | to_entries[] | select((.value.options.baseURL // "") | test("127.0.0.1|localhost"))] | length' "$OPENCODE_CONFIG" 2>/dev/null)"
+        [[ "${local_count:-0}" -gt 0 ]] && print "active model unknown · ${local_count} local provider(s) configured" || print "active model unknown"
       else
         emit "active model unknown"
       fi
@@ -445,6 +525,105 @@ agent_color() {
     idle) print "#4caf50" ;;
     *) print "#5aa9ff" ;;
   esac
+}
+
+format_rss_mb() {
+  local kb="${1:-0}"
+  printf "%.1f" "$(( kb / 1024.0 ))" 2>/dev/null || print "0.0"
+}
+
+mcp_label_for_cmd() {
+  local cmd="$1"
+  [[ "$cmd" == *"agentmemory-mcp"* || "$cmd" == *"@agentmemory/mcp"* ]] && { print "AgentMemory MCP"; return; }
+  [[ "$cmd" == *"xcodebuildmcp"* ]] && { print "XcodeBuild MCP"; return; }
+  [[ "$cmd" == *"context7-mcp"* ]] && { print "Context7 MCP"; return; }
+  print "MCP/helper"
+}
+
+agentmemory_detected() {
+  is_listening "$AGENTMEMORY_PORT" && return 0
+  local pid cmd
+  for pid in "${MCP_PIDS[@]}" "${BACKEND_PIDS[@]}"; do
+    cmd="${PS_CMD[$pid]:-}"
+    [[ "$cmd" == *"agentmemory"* || "$cmd" == *"@agentmemory/mcp"* ]] && return 0
+  done
+  return 1
+}
+
+print_helper_summary_rows() {
+  local pid label owner key rss
+  typeset -A counts rss_by_label owner_counts owner_rss
+  for pid in "${MCP_PIDS[@]}"; do
+    label="$(mcp_label_for_cmd "${PS_CMD[$pid]:-}")"
+    owner="$(agent_owner_for_pid "$pid")"
+    [[ "$owner" == "-" ]] && owner="unowned"
+    key="${label}|${owner}"
+    counts[$label]=$(( ${counts[$label]:-0} + 1 ))
+    owner_counts[$key]=$(( ${owner_counts[$key]:-0} + 1 ))
+    rss="${PS_RSS[$pid]:-0}"
+    rss_by_label[$label]=$(( ${rss_by_label[$label]:-0} + rss ))
+    owner_rss[$key]=$(( ${owner_rss[$key]:-0} + rss ))
+  done
+  for label in "${(@k)counts}"; do
+    emit "--${label} · ${counts[$label]} process(es) · $(format_rss_mb "${rss_by_label[$label]:-0}") MB RSS | font=Menlo"
+    for key in "${(@k)owner_counts}"; do
+      [[ "$key" == "$label|"* ]] || continue
+      owner="${key#*|}"
+      emit "----owner ${owner} · ${owner_counts[$key]} process(es) · $(format_rss_mb "${owner_rss[$key]:-0}") MB RSS | font=Menlo"
+    done
+  done
+}
+
+clean_version_for_tool() {
+  local tool="$1"
+  local version
+  version="$(cmd_version "$tool")"
+  if have "$SED"; then
+    case "$tool" in
+      codex) emit "$version" | "$SED" 's/^codex-cli //' ;;
+      claude) emit "$version" | "$SED" 's/ (Claude Code)//' ;;
+      aichat) emit "$version" | "$SED" 's/^aichat //' ;;
+      *) emit "$version" ;;
+    esac
+  else
+    emit "$version"
+  fi
+}
+
+print_installed_cli_rows() {
+  local any=0 name bin update_key latest version tool_path update_status color
+  for spec in \
+    "Codex|codex|codex" \
+    "Claude Code|claude|claude" \
+    "OpenCode|opencode|opencode" \
+    "Gemini CLI|gemini|gemini" \
+    "Aider|aider|" \
+    "aichat|aichat|"; do
+    name="${spec%%|*}"
+    spec="${spec#*|}"
+    bin="${spec%%|*}"
+    update_key="${spec#*|}"
+    command -v "$bin" >/dev/null 2>&1 || continue
+    any=1
+    version="$(clean_version_for_tool "$bin")"
+    tool_path="$(command -v "$bin" 2>/dev/null)"
+    latest=""
+    [[ -n "$update_key" ]] && latest="$(cached_latest_version "$update_key")"
+    update_status="installed"
+    color="#5aa9ff"
+    if [[ -n "$latest" ]]; then
+      if [[ "$version" == *"$latest"* ]]; then
+        update_status="current"
+        color="#4caf50"
+      else
+        update_status="latest ${latest}"
+        color="#ff9800"
+      fi
+    fi
+    emit "--${name} · ${version:-version unknown} · ${update_status} | color=${color}"
+    emit "----Path: $(shorten_path "$tool_path") | font=Menlo"
+  done
+  (( any == 0 )) && emit "--No known coding CLIs found on PATH | color=gray"
 }
 
 omlx_status_line() {
@@ -492,6 +671,20 @@ omlx_loaded_rows() {
     ctxk="$(( ctx / 1024 ))K"
     emit "--✓ $(shorten_text "$short" 58) · ${engine} · ${gb}GB · ${ctxk} | color=#4caf50"
   done
+}
+
+omlx_first_loaded_model() {
+  local key="" json
+  have "$CURL" && have "$JQ" || return
+  is_listening "$OMLX_PORT" || return
+  key="$OMLX_API_KEY"
+  [[ -z "$key" && -n "$OMLX_KEY_FILE" && -f "$OMLX_KEY_FILE" ]] && key="$(cat "$OMLX_KEY_FILE" 2>/dev/null)"
+  if [[ -n "$key" ]]; then
+    json="$("$CURL" -s --max-time 1 -H "Authorization: Bearer $key" "$OMLX_URL/v1/models/status" 2>/dev/null)"
+  else
+    json="$("$CURL" -s --max-time 1 "$OMLX_URL/v1/models/status" 2>/dev/null)"
+  fi
+  emit "$json" | "$JQ" -r '.models[]? | select(.loaded) | .id' 2>/dev/null | head -1
 }
 
 ollama_status_line() {
@@ -552,14 +745,17 @@ mcp_count="${#MCP_PIDS[@]}"
 local_backend_count=0
 is_listening "$OMLX_PORT" && (( local_backend_count++ ))
 is_listening "$OLLAMA_PORT" && (( local_backend_count++ ))
-is_listening "$AGENTMEMORY_PORT" && (( local_backend_count++ ))
+agentmemory_detected && (( local_backend_count++ ))
+maybe_refresh_update_cache
 
 first_model=""
 if is_listening "$OLLAMA_PORT" && have "$CURL" && have "$JQ"; then
   first_model="$("$CURL" -s --max-time 1 "$OLLAMA_URL/api/ps" 2>/dev/null | "$JQ" -r '.models[0].name // empty' 2>/dev/null)"
 fi
-[[ -z "$first_model" ]] && first_model="$(aichat_current_model)"
-[[ -z "$first_model" ]] && first_model="$(toml_value model)"
+[[ -z "$first_model" ]] && first_model="$(omlx_first_loaded_model)"
+if [[ -z "$first_model" ]] && is_listening "$OMLX_PORT"; then
+  first_model="oMLX up"
+fi
 first_model="$(shorten_text "$first_model" 18)"
 
 emit "🤖 ${agent_count} agents · ${first_model:-no model}"
@@ -592,59 +788,83 @@ done
 
 emit "---"
 emit "Local LLM / Memory Backends"
-emit "--$(omlx_status_line)"
-omlx_loaded_rows
-emit "--$(ollama_status_line)"
-ollama_loaded_rows
-emit "--$(agentmemory_status_line)"
+if (( local_backend_count == 0 )); then
+  emit "--No known local backends detected | color=gray"
+else
+  if is_listening "$OMLX_PORT"; then
+    emit "--$(omlx_status_line)"
+    omlx_loaded_rows
+  fi
+  if is_listening "$OLLAMA_PORT"; then
+    emit "--$(ollama_status_line)"
+    ollama_loaded_rows
+  fi
+  if agentmemory_detected; then
+    emit "--$(agentmemory_status_line)"
+  fi
+fi
 
 emit "---"
 emit "MCP / Helper Processes"
 if (( mcp_count == 0 )); then
   emit "--No MCP helpers detected | color=gray"
 else
-  for pid in "${MCP_PIDS[@]}"; do
-    cmd="${PS_CMD[$pid]:-}"
-    owner="$(agent_owner_for_pid "$pid")"
-    label="MCP"
-    [[ "$cmd" == *"agentmemory-mcp"* ]] && label="AgentMemory MCP"
-    [[ "$cmd" == *"xcodebuildmcp"* ]] && label="XcodeBuild MCP"
-    [[ "$cmd" == *"context7-mcp"* ]] && label="Context7 MCP"
-    emit "--${label} pid ${pid} · owner ${owner} · ${PS_ETIME[$pid]:-?}"
-    if [[ "$SHOW_COMMANDS" == "1" || "$SHOW_COMMANDS" == "true" ]]; then
-      emit "----Command: $(shorten_text "$(redact "$cmd")" 110) | font=Menlo"
-    fi
-  done
+  if truthy "$SHOW_HELPERS"; then
+    for pid in "${MCP_PIDS[@]}"; do
+      cmd="${PS_CMD[$pid]:-}"
+      owner="$(agent_owner_for_pid "$pid")"
+      label="$(mcp_label_for_cmd "$cmd")"
+      emit "--${label} pid ${pid} · owner ${owner} · ${PS_ETIME[$pid]:-?} · $(format_rss_mb "${PS_RSS[$pid]:-0}") MB RSS"
+      if truthy "$SHOW_COMMANDS"; then
+        emit "----Command: $(shorten_text "$(redact "$cmd")" 110) | font=Menlo"
+      fi
+    done
+  else
+    print_helper_summary_rows
+    emit "--Show individual helper processes | bash=$0 param1=refresh terminal=false refresh=true"
+    emit "----Set AGENTWATCH_SHOW_HELPERS=1 for per-process debug output | color=gray"
+  fi
 fi
 
 emit "---"
-emit "Configured Model Routes"
-codex_model="$(toml_value model)"
-codex_provider="$(codex_provider_for_cmd "codex")"
-emit "--Codex default: ${codex_model:-unknown} · $(endpoint_label "$(codex_provider_url "$codex_provider")") | font=Menlo"
-aichat_model="$(aichat_current_model)"
-emit "--aichat default: ${aichat_model:-unset} · $(endpoint_label "$(aichat_model_target "$aichat_model")") | font=Menlo"
-if [[ -f "$OPENCODE_CONFIG" ]] && have "$JQ"; then
-  "$JQ" -r '.provider // {} | to_entries[] | "\(.key) -> \(.value.options.baseURL // "unknown")"' "$OPENCODE_CONFIG" 2>/dev/null \
-  | while read -r row; do
-    emit "--OpenCode: $(shorten_text "$row" 94) | font=Menlo"
-  done
+emit "Installed Coding CLIs"
+print_installed_cli_rows
+if truthy "$CHECK_UPDATES"; then
+  cache_age="$(update_cache_age)"
+  if [[ -n "$cache_age" ]]; then
+    emit "--Refresh update cache | bash=$0 param1=check-updates terminal=false refresh=true"
+  else
+    emit "--Check updates now | bash=$0 param1=check-updates terminal=false refresh=true"
+  fi
+else
+  emit "--Update checks disabled | color=gray"
+  emit "----Set AGENTWATCH_CHECK_UPDATES=1 to enable cached registry checks | color=gray"
 fi
 
-emit "---"
-emit "Interesting Listening Ports"
-open_ports_rows
+if [[ -n "$INTERESTING_PORTS" ]]; then
+  emit "---"
+  emit "Interesting Listening Ports"
+  open_ports_rows
+fi
 
 emit "---"
 emit "Tools"
-emit "--Open Codex config | bash=$0 param1=open param2=codex-config terminal=false"
-emit "--Open Claude session metadata | bash=$0 param1=open param2=claude-sessions terminal=false"
-emit "--Open aichat config | bash=$0 param1=open param2=aichat-config terminal=false"
-emit "--Open OpenCode config | bash=$0 param1=open param2=opencode-config terminal=false"
-emit "--Open oMLX admin | bash=$0 param1=open param2=omlx-admin terminal=false"
-emit "--Open oMLX chat | bash=$0 param1=open param2=omlx-chat terminal=false"
-emit "--Open AgentMemory viewer | bash=$0 param1=open param2=agentmemory-viewer terminal=false"
-emit "--Open AgentMemory log | bash=$0 param1=open param2=agentmemory-log terminal=false"
-emit "--Open SwiftBar plugin folder | bash=$0 param1=open param2=swiftbar-folder terminal=false"
-emit "--Open Activity Monitor | bash=$0 param1=open param2=activity terminal=false"
+[[ -f "$CODEX_CONFIG" ]] && emit "--Open Codex config | bash=$0 param1=open param2=codex-config terminal=false"
+[[ -d "$CLAUDE_SESSIONS" ]] && emit "--Open Claude session metadata | bash=$0 param1=open param2=claude-sessions terminal=false"
+[[ -f "$AICHAT_CONFIG" ]] && command -v aichat >/dev/null 2>&1 && emit "--Open aichat config | bash=$0 param1=open param2=aichat-config terminal=false"
+[[ -f "$OPENCODE_CONFIG" ]] && command -v opencode >/dev/null 2>&1 && emit "--Open OpenCode config | bash=$0 param1=open param2=opencode-config terminal=false"
+if is_listening "$OMLX_PORT"; then
+  emit "--Open oMLX admin | bash=$0 param1=open param2=omlx-admin terminal=false"
+  emit "--Open oMLX chat | bash=$0 param1=open param2=omlx-chat terminal=false"
+fi
+if agentmemory_detected; then
+  emit "--Open AgentMemory viewer | bash=$0 param1=open param2=agentmemory-viewer terminal=false"
+  [[ -f "$AGENTMEMORY_LOG" ]] && emit "--Open AgentMemory log | bash=$0 param1=open param2=agentmemory-log terminal=false"
+fi
+[[ -d "$SWIFTBAR_PLUGIN_DIR" ]] && emit "--Open SwiftBar plugin folder | bash=$0 param1=open param2=swiftbar-folder terminal=false"
+if command -v open >/dev/null 2>&1; then
+  emit "--Open Activity Monitor | bash=$0 param1=open param2=activity terminal=false"
+fi
 emit "Refresh | refresh=true"
+
+exit 0

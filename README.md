@@ -1,15 +1,16 @@
 # Agent Watch
 
-Agent Watch is a SwiftBar/xbar-compatible menu bar plugin for seeing which local coding agents are running, which model/provider targets they appear to use, what folders they are working in, and which local LLM or memory backends are online.
+Agent Watch is a SwiftBar/xbar-compatible menu bar plugin for seeing which local coding agents are running, which model/provider targets they appear to use, what folders they are working in, and which local LLM backends or helper services are online.
 
-It is built for local agent-heavy development setups with tools such as Codex, Claude Code, Gemini ACP, OpenCode, aichat, Ollama, oMLX, and AgentMemory.
+It is built for local agent-heavy development setups with tools such as Codex, Claude Code, Gemini ACP, OpenCode, Ollama, and oMLX. More specific tools such as aichat and AgentMemory are autodetected when present.
 
 ## Features
 
 - Shows detected local agent processes with PID, uptime, version, working folder, model or provider target, and helper process count.
-- Detects local LLM and memory backends, including Ollama, oMLX, and AgentMemory.
-- Groups known MCP/helper processes under likely owning agents when the process tree exposes that relationship.
-- Reads common local agent config files to infer default model routes.
+- Detects local LLM and helper backends, including Ollama, oMLX, and optional AgentMemory.
+- Groups known MCP/helper processes by owner and type, with per-process debug output behind `AGENTWATCH_SHOW_HELPERS=1`.
+- Shows installed coding CLIs and versions when they are discoverable on `PATH`.
+- Supports opt-in cached update checks for npm-distributed CLIs with `AGENTWATCH_CHECK_UPDATES=1`.
 - Hides process command lines by default. Optional redacted command output can be enabled with `AGENTWATCH_SHOW_COMMANDS=1`.
 - Uses only local process inspection and local HTTP endpoints by default.
 
@@ -66,15 +67,20 @@ Agent Watch works without configuration, but these environment variables can tai
 | `AGENTWATCH_OMLX_API_KEY` | empty | Optional oMLX bearer token for model status |
 | `AGENTWATCH_OMLX_API_KEY_FILE` | empty | Optional file containing the oMLX bearer token |
 | `AGENTWATCH_SHOW_COMMANDS` | `0` | Set to `1` to show redacted process commands |
-| `AGENTWATCH_INTERESTING_PORTS` | local agent/backend ports | Comma-separated TCP listening ports to show |
+| `AGENTWATCH_SHOW_HELPERS` | `0` | Set to `1` to show individual MCP/helper processes |
+| `AGENTWATCH_CHECK_UPDATES` | `0` | Set to `1` to enable cached update checks |
+| `AGENTWATCH_UPDATE_CACHE` | `$HOME/.cache/agent-watch/cli-updates.tsv` | Update check cache path |
+| `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 
 ## Privacy And Security
 
 Agent Watch is intended for local observability. It does not send telemetry.
 
-By default it inspects the local process table with `ps`, working directories and listening ports with `lsof`, selected local config files listed above, and local HTTP status endpoints for oMLX, Ollama, and AgentMemory. It does not inspect arbitrary project files.
+By default it inspects the local process table with `ps`, working directories and listening ports with `lsof`, selected local config files listed above, and local HTTP status endpoints for detected local services. It does not inspect arbitrary project files.
 
 Process command lines are hidden by default because they can contain sensitive arguments. If `AGENTWATCH_SHOW_COMMANDS=1` is enabled, commands are still passed through a redactor for common API keys, bearer tokens, GitHub tokens, Anthropic/OpenAI-style keys, Gemini keys, Slack tokens, and Context7 tokens.
+
+Update checks are disabled by default. When enabled, Agent Watch uses package registry lookups only to refresh a local cache, not on every menu refresh.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
