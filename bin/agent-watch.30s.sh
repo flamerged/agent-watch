@@ -1,6 +1,6 @@
 #!/bin/zsh
 # <xbar.title>Agent Watch</xbar.title>
-# <xbar.version>v0.1.0</xbar.version>
+# <xbar.version>v0.1.0</xbar.version> # x-release-please-version
 # <xbar.author>flamerged</xbar.author>
 # <xbar.author.github>flamerged</xbar.author.github>
 # <xbar.desc>Shows local coding agents, model/provider targets, folders, versions, helper processes, and local LLM backends.</xbar.desc>
@@ -11,9 +11,12 @@
 # <xbar.var>boolean(AGENTWATCH_SHOW_COMMANDS=false): Show redacted process commands</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_HELPERS=false): Show individual MCP/helper processes</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_CHECK_UPDATES=false): Check latest CLI versions from package registries</xbar.var>
+# <xbar.var>string(AGENTWATCH_UPDATE_TTL_SECONDS="86400"): Seconds between update checks when enabled</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_SHOW_CONFIG_ACTIONS=false): Show config-file open actions</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_SHOW_BACKEND_ACTIONS=false): Show detected backend web/log open actions</xbar.var>
 # <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
-# <swiftbar.version>v0.1.0</swiftbar.version>
+# <swiftbar.version>v0.1.0</swiftbar.version> # x-release-please-version
 # <swiftbar.author>flamerged</swiftbar.author>
 # <swiftbar.desc>Shows local coding agents, model/provider targets, folders, versions, helper processes, and local LLM backends.</swiftbar.desc>
 # <swiftbar.refresh>30s</swiftbar.refresh>
@@ -93,7 +96,10 @@ OMLX_API_KEY="${AGENTWATCH_OMLX_API_KEY:-}"
 SHOW_COMMANDS="${AGENTWATCH_SHOW_COMMANDS:-0}"
 SHOW_HELPERS="${AGENTWATCH_SHOW_HELPERS:-0}"
 CHECK_UPDATES="${AGENTWATCH_CHECK_UPDATES:-0}"
+UPDATE_TTL_SECONDS="${AGENTWATCH_UPDATE_TTL_SECONDS:-86400}"
 UPDATE_CACHE="${AGENTWATCH_UPDATE_CACHE:-$HOME/.cache/agent-watch/cli-updates.tsv}"
+SHOW_CONFIG_ACTIONS="${AGENTWATCH_SHOW_CONFIG_ACTIONS:-0}"
+SHOW_BACKEND_ACTIONS="${AGENTWATCH_SHOW_BACKEND_ACTIONS:-0}"
 
 OMLX_PORT="$(url_port "$OMLX_URL")"
 OLLAMA_PORT="$(url_port "$OLLAMA_URL")"
@@ -140,6 +146,7 @@ write_update_cache() {
   for row in \
     "codex	@openai/codex" \
     "claude	@anthropic-ai/claude-code" \
+    "opencode	opencode-ai" \
     "gemini	@google/gemini-cli"; do
     local tool="${row%%	*}"
     local package="${row#*	}"
@@ -162,7 +169,8 @@ maybe_refresh_update_cache() {
   local age now
   age="$(update_cache_age)"
   now="$(date +%s 2>/dev/null || print "0")"
-  if [[ -z "$age" || $(( now - age )) -gt 86400 ]]; then
+  [[ "$UPDATE_TTL_SECONDS" == <-> ]] || UPDATE_TTL_SECONDS=86400
+  if [[ -z "$age" || $(( now - age )) -gt "$UPDATE_TTL_SECONDS" ]]; then
     "$0" check-updates >/dev/null 2>&1 &
   fi
 }
@@ -838,7 +846,6 @@ if truthy "$CHECK_UPDATES"; then
   fi
 else
   emit "--Update checks disabled | color=gray"
-  emit "----Set AGENTWATCH_CHECK_UPDATES=1 to enable cached registry checks | color=gray"
 fi
 
 if [[ -n "$INTERESTING_PORTS" ]]; then
@@ -848,18 +855,22 @@ if [[ -n "$INTERESTING_PORTS" ]]; then
 fi
 
 emit "---"
-emit "Tools"
-[[ -f "$CODEX_CONFIG" ]] && emit "--Open Codex config | bash=$0 param1=open param2=codex-config terminal=false"
-[[ -d "$CLAUDE_SESSIONS" ]] && emit "--Open Claude session metadata | bash=$0 param1=open param2=claude-sessions terminal=false"
-[[ -f "$AICHAT_CONFIG" ]] && command -v aichat >/dev/null 2>&1 && emit "--Open aichat config | bash=$0 param1=open param2=aichat-config terminal=false"
-[[ -f "$OPENCODE_CONFIG" ]] && command -v opencode >/dev/null 2>&1 && emit "--Open OpenCode config | bash=$0 param1=open param2=opencode-config terminal=false"
-if is_listening "$OMLX_PORT"; then
-  emit "--Open oMLX admin | bash=$0 param1=open param2=omlx-admin terminal=false"
-  emit "--Open oMLX chat | bash=$0 param1=open param2=omlx-chat terminal=false"
+emit "Actions"
+if truthy "$SHOW_CONFIG_ACTIONS"; then
+  [[ -f "$CODEX_CONFIG" ]] && emit "--Open Codex config | bash=$0 param1=open param2=codex-config terminal=false"
+  [[ -d "$CLAUDE_SESSIONS" ]] && emit "--Open Claude session metadata | bash=$0 param1=open param2=claude-sessions terminal=false"
+  [[ -f "$AICHAT_CONFIG" ]] && command -v aichat >/dev/null 2>&1 && emit "--Open aichat config | bash=$0 param1=open param2=aichat-config terminal=false"
+  [[ -f "$OPENCODE_CONFIG" ]] && command -v opencode >/dev/null 2>&1 && emit "--Open OpenCode config | bash=$0 param1=open param2=opencode-config terminal=false"
 fi
-if agentmemory_detected; then
-  emit "--Open AgentMemory viewer | bash=$0 param1=open param2=agentmemory-viewer terminal=false"
-  [[ -f "$AGENTMEMORY_LOG" ]] && emit "--Open AgentMemory log | bash=$0 param1=open param2=agentmemory-log terminal=false"
+if truthy "$SHOW_BACKEND_ACTIONS"; then
+  if is_listening "$OMLX_PORT"; then
+    emit "--Open oMLX admin | bash=$0 param1=open param2=omlx-admin terminal=false"
+    emit "--Open oMLX chat | bash=$0 param1=open param2=omlx-chat terminal=false"
+  fi
+  if agentmemory_detected; then
+    emit "--Open AgentMemory viewer | bash=$0 param1=open param2=agentmemory-viewer terminal=false"
+    [[ -f "$AGENTMEMORY_LOG" ]] && emit "--Open AgentMemory log | bash=$0 param1=open param2=agentmemory-log terminal=false"
+  fi
 fi
 [[ -d "$SWIFTBAR_PLUGIN_DIR" ]] && emit "--Open SwiftBar plugin folder | bash=$0 param1=open param2=swiftbar-folder terminal=false"
 if command -v open >/dev/null 2>&1; then

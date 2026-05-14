@@ -10,7 +10,7 @@ It is built for local agent-heavy development setups with tools such as Codex, C
 - Detects local LLM and helper backends, including Ollama, oMLX, and optional AgentMemory.
 - Groups known MCP/helper processes by owner and type, with per-process debug output behind `AGENTWATCH_SHOW_HELPERS=1`.
 - Shows installed coding CLIs and versions when they are discoverable on `PATH`.
-- Supports opt-in cached update checks for npm-distributed CLIs with `AGENTWATCH_CHECK_UPDATES=1`.
+- Supports opt-in cached update checks for npm-distributed CLIs with `AGENTWATCH_CHECK_UPDATES=1`; checks are spaced by `AGENTWATCH_UPDATE_TTL_SECONDS`.
 - Hides process command lines by default. Optional redacted command output can be enabled with `AGENTWATCH_SHOW_COMMANDS=1`.
 - Uses only local process inspection and local HTTP endpoints by default.
 
@@ -69,7 +69,10 @@ Agent Watch works without configuration, but these environment variables can tai
 | `AGENTWATCH_SHOW_COMMANDS` | `0` | Set to `1` to show redacted process commands |
 | `AGENTWATCH_SHOW_HELPERS` | `0` | Set to `1` to show individual MCP/helper processes |
 | `AGENTWATCH_CHECK_UPDATES` | `0` | Set to `1` to enable cached update checks |
+| `AGENTWATCH_UPDATE_TTL_SECONDS` | `86400` | Minimum seconds between automatic registry checks when update checks are enabled |
 | `AGENTWATCH_UPDATE_CACHE` | `$HOME/.cache/agent-watch/cli-updates.tsv` | Update check cache path |
+| `AGENTWATCH_SHOW_CONFIG_ACTIONS` | `0` | Set to `1` to show local config-file open actions |
+| `AGENTWATCH_SHOW_BACKEND_ACTIONS` | `0` | Set to `1` to show backend web/log open actions for detected services |
 | `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 
 ## Privacy And Security
@@ -82,6 +85,8 @@ Process command lines are hidden by default because they can contain sensitive a
 
 Update checks are disabled by default. When enabled, Agent Watch uses package registry lookups only to refresh a local cache, not on every menu refresh.
 
+The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to adjust that interval, or use the menu action to refresh the cache manually.
+
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
 ## Development
@@ -93,6 +98,12 @@ Run the local checks:
 ```
 
 The checks run `zsh -n` and a smoke execution with command output disabled.
+
+## Releases
+
+PR titles should use Conventional Commits. `fix:` and `perf:` changes produce patch releases, `feat:` changes produce minor releases, and breaking changes produce major releases.
+
+Release Please opens and maintains the release PR from commits on `main`. Merging that release PR creates the GitHub release and tag.
 
 ## License
 

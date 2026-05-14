@@ -15,5 +15,6 @@ Keep changes local-first and privacy-conscious. The plugin should not send telem
 ## Pull Requests
 
 - Keep changes focused.
+- Use a Conventional Commit PR title. `fix:` and `perf:` trigger patch releases, `feat:` triggers minor releases, and breaking changes trigger major releases.
 - Include a short description of the agent/backend behavior being added.
 - Include before/after menu output when changing display behavior, with private paths or tokens removed.
