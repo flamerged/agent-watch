@@ -15,8 +15,9 @@
 # <xbar.var>string(AGENTWATCH_UPDATE_TTL_SECONDS="86400"): Seconds between update checks when enabled</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_CONFIG_ACTIONS=false): Show config-file open actions</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_BACKEND_ACTIONS=false): Show detected backend web/log open actions</xbar.var>
-# <xbar.var>string(AGENTWATCH_REPO_DIR=""): Optional Agent Watch git checkout for self-update actions</xbar.var>
+# <xbar.var>string(AGENTWATCH_REPO_DIR=""): Optional Agent Watch git checkout for source metadata</xbar.var>
 # <xbar.var>string(AGENTWATCH_REPO_URL="https://github.com/flamerged/agent-watch"): Agent Watch repository URL</xbar.var>
+# <xbar.var>string(AGENTWATCH_RELEASE_ASSET_URL="https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh"): Latest release asset URL for copied-plugin updates</xbar.var>
 # <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
 # <swiftbar.version>v0.3.0</swiftbar.version> # x-release-please-version
@@ -160,6 +161,7 @@ OPENCODE_CONFIG="${AGENTWATCH_OPENCODE_CONFIG:-$HOME/.config/opencode/opencode.j
 SWIFTBAR_PLUGIN_DIR="${AGENTWATCH_SWIFTBAR_PLUGIN_DIR:-$HOME/SwiftBarPlugins}"
 AGENTWATCH_REPO_DIR="${AGENTWATCH_REPO_DIR:-}"
 AGENTWATCH_REPO_URL="${AGENTWATCH_REPO_URL:-https://github.com/flamerged/agent-watch}"
+RELEASE_ASSET_URL="${AGENTWATCH_RELEASE_ASSET_URL:-https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh}"
 AGENTMEMORY_LOG="${AGENTWATCH_AGENTMEMORY_LOG:-$HOME/local-agentmemory/logs/agentmemory.log}"
 OMLX_URL="$(strip_slash "${AGENTWATCH_OMLX_URL:-http://127.0.0.1:8000}")"
 OLLAMA_URL="$(strip_slash "${AGENTWATCH_OLLAMA_URL:-http://127.0.0.1:11434}")"
@@ -243,17 +245,59 @@ plugin_version_label() {
   emit "v${PLUGIN_VERSION}"
 }
 
-update_plugin_from_git() {
-  local root
-  root="$(plugin_repo_root)"
-  if [[ -z "$root" ]]; then
-    print "No Agent Watch git checkout found."
-    print "Set AGENTWATCH_REPO_DIR to your checkout, or update the copied plugin file manually."
+update_plugin_from_release() {
+  local repo_root
+  repo_root="$(plugin_repo_root)"
+  if [[ -n "$repo_root" && "$PLUGIN_PATH" == "$repo_root"/* ]]; then
+    print "Plugin appears to be running from a git checkout: $repo_root"
+    print "Use git commands in the checkout for development updates."
     return 1
   fi
-  print "Updating Agent Watch in $root"
-  git -C "$root" fetch --tags --prune
-  git -C "$root" pull --ff-only
+
+  if ! have "$CURL"; then
+    print "curl is required to update from the latest release."
+    return 1
+  fi
+  if [[ ! -w "$PLUGIN_PATH" || ! -w "$PLUGIN_DIR" ]]; then
+    print "Plugin file or directory is not writable: $PLUGIN_PATH"
+    return 1
+  fi
+
+  local tmp first_line content
+  tmp="${PLUGIN_DIR}/.agent-watch.30s.sh.$$"
+  rm -f "$tmp"
+
+  print "Downloading latest Agent Watch release asset..."
+  if ! "$CURL" -fsSL \
+    --connect-timeout 5 \
+    --max-time 30 \
+    --retry 2 \
+    --retry-delay 1 \
+    "$RELEASE_ASSET_URL" -o "$tmp"; then
+    rm -f "$tmp"
+    print "Download failed: $RELEASE_ASSET_URL"
+    return 1
+  fi
+
+  IFS= read -r first_line < "$tmp" || first_line=""
+  content="$(< "$tmp")"
+  if [[ "$first_line" != "#!/bin/zsh" || "$content" != *"<xbar.title>Agent Watch</xbar.title>"* || "$content" != *"PLUGIN_VERSION=\""* ]]; then
+    rm -f "$tmp"
+    print "Downloaded file did not look like an Agent Watch plugin."
+    return 1
+  fi
+
+  chmod +x "$tmp" || {
+    rm -f "$tmp"
+    print "Could not mark downloaded plugin executable."
+    return 1
+  }
+  mv "$tmp" "$PLUGIN_PATH" || {
+    rm -f "$tmp"
+    print "Could not replace plugin file: $PLUGIN_PATH"
+    return 1
+  }
+  print "Updated Agent Watch from the latest release."
 }
 
 update_cache_age() {
@@ -323,8 +367,8 @@ case "$ACTION" in
     write_default_config && open_text_target "$CONFIG_FILE"
     exit $?
     ;;
-  update-self)
-    update_plugin_from_git
+  update-release)
+    update_plugin_from_release
     exit $?
     ;;
   open)
@@ -911,10 +955,9 @@ print_plugin_rows() {
     git_summary="$(plugin_git_summary "$root")"
     emit "--Repo: $(shorten_path "$root") | font=Menlo"
     emit "--Git: ${git_summary:-unknown} | font=Menlo"
-    emit "--Update from git | bash=$PLUGIN_PATH param1=update-self terminal=true refresh=true"
+    emit "----Use git commands for development updates | color=gray"
   else
-    emit "--No git checkout detected | color=gray"
-    emit "----Set AGENTWATCH_REPO_DIR to enable git updates | color=gray"
+    emit "--Update to latest release | bash=$PLUGIN_PATH param1=update-release terminal=true refresh=true"
   fi
   emit "--Open config file | bash=$PLUGIN_PATH param1=open param2=agent-watch-config terminal=false refresh=true"
   emit "--Open project page | bash=$PLUGIN_PATH param1=open param2=agent-watch-repo terminal=false"

@@ -20,18 +20,41 @@ It is built for local agent-heavy development setups with tools such as Codex, C
 ### SwiftBar
 
 1. Install [SwiftBar](https://github.com/swiftbar/SwiftBar).
-2. Clone this repo.
-3. Symlink the plugin into your SwiftBar plugin folder:
+2. Download the latest release plugin into your SwiftBar plugin folder:
 
 ```sh
-./scripts/install-swiftbar.sh "$HOME/SwiftBarPlugins"
+mkdir -p "$HOME/SwiftBarPlugins"
+curl -fsSL \
+  https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh \
+  -o "$HOME/SwiftBarPlugins/agent-watch.30s.sh"
+chmod +x "$HOME/SwiftBarPlugins/agent-watch.30s.sh"
 ```
 
 SwiftBar will pick up `agent-watch.30s.sh` and refresh every 30 seconds.
 
 ### xbar
 
-Agent Watch uses the BitBar/xbar stdout menu format and includes xbar metadata. Install it by copying or symlinking `bin/agent-watch.30s.sh` into your xbar plugin folder.
+Agent Watch uses the BitBar/xbar stdout menu format and includes xbar metadata. Install the latest release asset into your xbar plugin folder:
+
+```sh
+mkdir -p "$HOME/Library/Application Support/xbar/plugins"
+curl -fsSL \
+  https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh \
+  -o "$HOME/Library/Application Support/xbar/plugins/agent-watch.30s.sh"
+chmod +x "$HOME/Library/Application Support/xbar/plugins/agent-watch.30s.sh"
+```
+
+### Development Install
+
+Clone the repo only when you want a source checkout for development:
+
+```sh
+git clone https://github.com/flamerged/agent-watch.git
+cd agent-watch
+./scripts/install-swiftbar.sh "$HOME/SwiftBarPlugins"
+```
+
+Release installs show `Update to latest release`, so normal users do not need git. Source checkout installs show the current branch and commit for diagnostics, but hide the menu updater to avoid overwriting checkout-managed files. Development updates should use normal git commands in the checkout.
 
 ### Linux
 
@@ -77,8 +100,9 @@ The plugin also supports a local config file at `~/.config/agent-watch/config.en
 | `AGENTWATCH_UPDATE_CACHE` | `$HOME/.cache/agent-watch/cli-updates.tsv` | Update check cache path |
 | `AGENTWATCH_SHOW_CONFIG_ACTIONS` | `0` | Set to `1` to show local config-file open actions |
 | `AGENTWATCH_SHOW_BACKEND_ACTIONS` | `0` | Set to `1` to show backend web/log open actions for detected services |
-| `AGENTWATCH_REPO_DIR` | empty | Optional Agent Watch git checkout for self-update actions |
+| `AGENTWATCH_REPO_DIR` | empty | Optional Agent Watch git checkout for source metadata |
 | `AGENTWATCH_REPO_URL` | `https://github.com/flamerged/agent-watch` | Project page opened from the menu |
+| `AGENTWATCH_RELEASE_ASSET_URL` | `https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh` | Latest release asset URL used by copied-plugin updates |
 | `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 
 ## Privacy And Security
@@ -95,7 +119,7 @@ The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to 
 
 The "Watched Local Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
 
-The Agent Watch section shows the plugin version, config path, and script path. If the plugin can detect a git checkout, it also shows the branch/commit and an `Update from git` action. If the plugin was copied instead of symlinked from a checkout, set `AGENTWATCH_REPO_DIR` to the checkout path or update the copied script manually.
+The Agent Watch section shows the plugin version, config path, and script path. Release installs also show `Update to latest release`, which downloads the latest release asset and replaces the plugin script without requiring git. If the plugin can detect a git checkout, it instead shows the branch and commit for diagnostics and leaves updates to normal git commands.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
