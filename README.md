@@ -51,7 +51,7 @@ Clone the repo only when you want a source checkout for development:
 ```sh
 git clone https://github.com/flamerged/agent-watch.git
 cd agent-watch
-./scripts/install-swiftbar.sh "$HOME/SwiftBarPlugins"
+./scripts/install-dev-swiftbar.sh "$HOME/SwiftBarPlugins"
 ```
 
 Release installs show `Update to latest release`, so normal users do not need git. Source checkout installs show the current branch and commit for diagnostics, but hide the menu updater to avoid overwriting checkout-managed files. Development updates should use normal git commands in the checkout.
@@ -102,7 +102,8 @@ The plugin also supports a local config file at `~/.config/agent-watch/config.en
 | `AGENTWATCH_SHOW_BACKEND_ACTIONS` | `0` | Set to `1` to show backend web/log open actions for detected services |
 | `AGENTWATCH_REPO_DIR` | empty | Optional Agent Watch git checkout for source metadata |
 | `AGENTWATCH_REPO_URL` | `https://github.com/flamerged/agent-watch` | Project page opened from the menu |
-| `AGENTWATCH_RELEASE_ASSET_URL` | `https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh` | Latest release asset URL used by copied-plugin updates |
+| `AGENTWATCH_RELEASE_ASSET_URL` | `https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh` | HTTPS latest release asset URL used by copied-plugin updates |
+| `AGENTWATCH_UPDATE_LOG` | `$HOME/.cache/agent-watch/update.log` | Update log path |
 | `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 
 ## Privacy And Security
@@ -119,7 +120,7 @@ The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to 
 
 The "Watched Local Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
 
-The Agent Watch section shows the plugin version, config path, and script path. Release installs also show `Update to latest release`, which downloads the latest release asset and replaces the plugin script without requiring git. If the plugin can detect a git checkout, it instead shows the branch and commit for diagnostics and leaves updates to normal git commands.
+The Agent Watch section shows the plugin version, config path, and script path. Release installs also show `Update to latest release`, which runs in the background, logs to `AGENTWATCH_UPDATE_LOG`, downloads the latest release asset, and replaces the plugin script without requiring git. If the plugin can detect a git checkout, it instead shows the branch and commit for diagnostics and leaves updates to normal git commands.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
