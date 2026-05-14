@@ -11,7 +11,7 @@ It is built for local agent-heavy development setups with tools such as Codex, C
 - Groups known MCP/helper processes by owner and type, with per-process debug output behind `AGENTWATCH_SHOW_HELPERS=1`.
 - Shows installed coding CLIs and versions when they are discoverable on `PATH`.
 - Supports cached update checks for npm-distributed CLIs; checks are spaced by `AGENTWATCH_UPDATE_TTL_SECONDS`.
-- Shows the Agent Watch plugin version and, when installed from a git checkout, an update action.
+- Shows the Agent Watch plugin version and whether release installs are current or have a newer release available.
 - Hides process command lines by default. Optional redacted command output can be enabled with `AGENTWATCH_SHOW_COMMANDS=1`.
 - Uses only local process inspection and local HTTP endpoints by default.
 
@@ -54,7 +54,7 @@ cd agent-watch
 ./scripts/install-dev-swiftbar.sh "$HOME/SwiftBarPlugins"
 ```
 
-Release installs show `Update to latest release`, so normal users do not need git. Source checkout installs show the current branch and commit for diagnostics, but hide the menu updater to avoid overwriting checkout-managed files. Development updates should use normal git commands in the checkout.
+Release installs show whether the installed plugin is current or whether a newer release is available. `Update to latest release` runs in the background, writes to `AGENTWATCH_UPDATE_LOG`, and replaces the plugin with the latest release asset. Source checkout installs show the current branch and commit for diagnostics, but hide the menu updater to avoid overwriting checkout-managed files. Development updates should use normal git commands in the checkout.
 
 ### Linux
 
@@ -104,6 +104,9 @@ The plugin also supports a local config file at `~/.config/agent-watch/config.en
 | `AGENTWATCH_REPO_URL` | `https://github.com/flamerged/agent-watch` | Project page opened from the menu |
 | `AGENTWATCH_RELEASE_ASSET_URL` | `https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh` | HTTPS latest release asset URL used by copied-plugin updates |
 | `AGENTWATCH_UPDATE_LOG` | `$HOME/.cache/agent-watch/update.log` | Update log path |
+| `AGENTWATCH_CHECK_RELEASE_UPDATES` | `1` | Set to `0` to disable cached plugin release checks |
+| `AGENTWATCH_RELEASE_CHECK_TTL_SECONDS` | `86400` | Minimum seconds between automatic latest-release checks |
+| `AGENTWATCH_RELEASE_CHECK_CACHE` | `$HOME/.cache/agent-watch/release-check.tsv` | Latest-release check cache path |
 | `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 
 ## Privacy And Security
@@ -114,9 +117,9 @@ By default it inspects the local process table with `ps`, working directories an
 
 Process command lines are hidden by default because they can contain sensitive arguments. If `AGENTWATCH_SHOW_COMMANDS=1` is enabled, commands are still passed through a redactor for common API keys, bearer tokens, GitHub tokens, Anthropic/OpenAI-style keys, Gemini keys, Slack tokens, and Context7 tokens.
 
-Update checks are enabled by default. Agent Watch uses package registry lookups only to refresh a local cache, not on every menu refresh.
+Update checks are enabled by default. Agent Watch uses package registry and GitHub release lookups only to refresh local caches, not on every menu refresh.
 
-The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to adjust that interval, or use the menu action to refresh the cache manually.
+The default update-check TTLs are one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` for CLI package checks and `AGENTWATCH_RELEASE_CHECK_TTL_SECONDS` for plugin release checks, or use the menu actions to refresh the caches manually.
 
 The "Watched Local Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
 

@@ -19,6 +19,9 @@
 # <xbar.var>string(AGENTWATCH_REPO_URL="https://github.com/flamerged/agent-watch"): Agent Watch repository URL</xbar.var>
 # <xbar.var>string(AGENTWATCH_RELEASE_ASSET_URL="https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh"): Latest release asset URL for copied-plugin updates</xbar.var>
 # <xbar.var>string(AGENTWATCH_UPDATE_LOG="~/.cache/agent-watch/update.log"): Update log file path</xbar.var>
+# <xbar.var>boolean(AGENTWATCH_CHECK_RELEASE_UPDATES=true): Check latest Agent Watch release in the background</xbar.var>
+# <xbar.var>string(AGENTWATCH_RELEASE_CHECK_TTL_SECONDS="86400"): Seconds between latest-release checks when enabled</xbar.var>
+# <xbar.var>string(AGENTWATCH_RELEASE_CHECK_CACHE="~/.cache/agent-watch/release-check.tsv"): Latest-release check cache path</xbar.var>
 # <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
 # <swiftbar.version>v0.3.0</swiftbar.version> # x-release-please-version
@@ -78,6 +81,8 @@ write_default_config() {
     builtin print -r -- "# CLI update checks are cached and spaced by this TTL."
     builtin print -r -- "AGENTWATCH_CHECK_UPDATES=true"
     builtin print -r -- "AGENTWATCH_UPDATE_TTL_SECONDS=86400"
+    builtin print -r -- "AGENTWATCH_CHECK_RELEASE_UPDATES=true"
+    builtin print -r -- "AGENTWATCH_RELEASE_CHECK_TTL_SECONDS=86400"
     builtin print -r -- ""
     builtin print -r -- "# Uncomment these when you want extra debug or local actions."
     builtin print -r -- "# AGENTWATCH_SHOW_HELPERS=true"
@@ -165,6 +170,10 @@ AGENTWATCH_REPO_URL="${AGENTWATCH_REPO_URL:-https://github.com/flamerged/agent-w
 RELEASE_ASSET_URL="${AGENTWATCH_RELEASE_ASSET_URL:-https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh}"
 UPDATE_LOG="${AGENTWATCH_UPDATE_LOG:-$HOME/.cache/agent-watch/update.log}"
 UPDATE_LOG="${UPDATE_LOG/#\~/$HOME}"
+CHECK_RELEASE_UPDATES="${AGENTWATCH_CHECK_RELEASE_UPDATES:-1}"
+RELEASE_CHECK_TTL_SECONDS="${AGENTWATCH_RELEASE_CHECK_TTL_SECONDS:-86400}"
+RELEASE_CHECK_CACHE="${AGENTWATCH_RELEASE_CHECK_CACHE:-$HOME/.cache/agent-watch/release-check.tsv}"
+RELEASE_CHECK_CACHE="${RELEASE_CHECK_CACHE/#\~/$HOME}"
 AGENTMEMORY_LOG="${AGENTWATCH_AGENTMEMORY_LOG:-$HOME/local-agentmemory/logs/agentmemory.log}"
 OMLX_URL="$(strip_slash "${AGENTWATCH_OMLX_URL:-http://127.0.0.1:8000}")"
 OLLAMA_URL="$(strip_slash "${AGENTWATCH_OLLAMA_URL:-http://127.0.0.1:11434}")"
@@ -246,6 +255,153 @@ plugin_version_label() {
     fi
   fi
   emit "v${PLUGIN_VERSION}"
+}
+
+file_mtime() {
+  local file="$1"
+  [[ -f "$file" ]] || { emit ""; return; }
+  if stat -f %m "$file" >/dev/null 2>&1; then
+    stat -f %m "$file"
+  elif stat -c %Y "$file" >/dev/null 2>&1; then
+    stat -c %Y "$file"
+  fi
+}
+
+release_tag_norm() {
+  emit "${1%%-*}" | "$SED" 's/^v//'
+}
+
+latest_release_tag_from_asset_url() {
+  local tag
+  tag="$(emit "$RELEASE_ASSET_URL" | "$SED" -n 's#.*releases/download/\([^/]*\)/.*#\1#p' | head -1)"
+  [[ -n "$tag" && "$tag" != "latest" ]] || return 1
+  emit "$tag"
+}
+
+github_repo_slug() {
+  local slug
+  [[ "$AGENTWATCH_REPO_URL" == https://github.com/* ]] || return 1
+  slug="${AGENTWATCH_REPO_URL#https://github.com/}"
+  slug="${slug%%\?*}"
+  slug="${slug%%#*}"
+  slug="${slug%/}"
+  slug="${slug%.git}"
+  [[ "$slug" == */* && "$slug" != */*/* ]] || return 1
+  emit "$slug"
+}
+
+latest_release_tag() {
+  local repo tag
+  have "$CURL" || return 1
+  if repo="$(github_repo_slug)" && [[ -n "$repo" ]]; then
+    tag="$("$CURL" -fsSL \
+      --connect-timeout 5 \
+      --max-time 15 \
+      --retry 1 \
+      -H 'Accept: application/vnd.github+json' \
+      "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+      | "$JQ" -r '.tag_name // empty' 2>/dev/null)"
+    if [[ -n "$tag" && "$tag" != "null" ]]; then
+      emit "$tag"
+      return
+    fi
+  fi
+  latest_release_tag_from_asset_url
+}
+
+write_release_check_cache() {
+  local now tmp latest check_status rc
+  now="$(date +%s 2>/dev/null || emit "0")"
+  mkdir -p "${RELEASE_CHECK_CACHE:h}" 2>/dev/null || {
+    rm -f "${RELEASE_CHECK_CACHE}.lock" 2>/dev/null || true
+    return 1
+  }
+  tmp="${RELEASE_CHECK_CACHE}.$$"
+  if latest="$(latest_release_tag)"; then
+    check_status="ok"
+  else
+    check_status="error"
+    latest=""
+  fi
+  if builtin printf '%s\t%s\t%s\n' "$now" "$check_status" "$latest" > "$tmp" \
+    && mv "$tmp" "$RELEASE_CHECK_CACHE"; then
+    [[ "$check_status" == "ok" ]]
+    rc=$?
+  else
+    rm -f "$tmp" 2>/dev/null || true
+    rc=1
+  fi
+  rm -f "${RELEASE_CHECK_CACHE}.lock" 2>/dev/null || true
+  return "$rc"
+}
+
+release_check_cache_fields() {
+  [[ -f "$RELEASE_CHECK_CACHE" ]] || return 1
+  local ts check_status latest rest
+  IFS=$'\t' read -r ts check_status latest rest < "$RELEASE_CHECK_CACHE" || return 1
+  builtin printf '%s\t%s\t%s\n' "$ts" "$check_status" "$latest"
+}
+
+release_check_cache_age() {
+  local mtime now
+  mtime="$(file_mtime "$RELEASE_CHECK_CACHE")"
+  [[ -n "$mtime" ]] || { emit ""; return; }
+  now="$(date +%s 2>/dev/null || emit "0")"
+  emit $(( now - mtime ))
+}
+
+maybe_refresh_release_check() {
+  truthy "$CHECK_RELEASE_UPDATES" || return
+  [[ "$RELEASE_CHECK_TTL_SECONDS" == <-> ]] || RELEASE_CHECK_TTL_SECONDS=86400
+  local age lock_file lock_mtime current_mtime now lock_age
+  age="$(release_check_cache_age)"
+  if [[ -n "$age" && "$age" -le "$RELEASE_CHECK_TTL_SECONDS" ]]; then
+    return
+  fi
+  mkdir -p "${RELEASE_CHECK_CACHE:h}" 2>/dev/null || return
+  lock_file="${RELEASE_CHECK_CACHE}.lock"
+  lock_mtime="$(file_mtime "$lock_file")"
+  if [[ -n "$lock_mtime" ]]; then
+    now="$(date +%s 2>/dev/null || emit "0")"
+    lock_age=$(( now - lock_mtime ))
+    if [[ "$lock_age" -gt 300 ]]; then
+      current_mtime="$(file_mtime "$lock_file")"
+      [[ "$current_mtime" == "$lock_mtime" ]] && rm -f "$lock_file" 2>/dev/null || true
+    fi
+  fi
+  ( set -C; : > "$lock_file" ) 2>/dev/null || return
+  "$PLUGIN_PATH" check-release >/dev/null 2>&1 &
+}
+
+release_status_label() {
+  local current="$1" fields ts check_status latest
+  truthy "$CHECK_RELEASE_UPDATES" || { emit "update checks disabled"; return; }
+  fields="$(release_check_cache_fields)" || { emit "checking latest release"; return; }
+  IFS=$'\t' read -r ts check_status latest <<< "$fields"
+  if [[ "$check_status" != "ok" || -z "$latest" ]]; then
+    emit "latest check unavailable"
+  elif [[ "$(release_tag_norm "$latest")" == "$(release_tag_norm "$current")" ]]; then
+    emit "latest"
+  else
+    emit "update $latest available"
+  fi
+}
+
+release_status_color() {
+  local label="$1"
+  case "$label" in
+    update\ *\ available) emit "#cc6633" ;;
+    latest) emit "#2f8f46" ;;
+    *) emit "#888888" ;;
+  esac
+}
+
+cached_latest_release_tag() {
+  local fields ts check_status latest
+  fields="$(release_check_cache_fields)" || return 1
+  IFS=$'\t' read -r ts check_status latest <<< "$fields"
+  [[ "$check_status" == "ok" && -n "$latest" ]] || return 1
+  emit "$latest"
 }
 
 log_update() {
@@ -387,6 +543,10 @@ case "$ACTION" in
   check-updates)
     write_update_cache
     exit 0
+    ;;
+  check-release)
+    write_release_check_cache
+    exit $?
     ;;
   configure)
     write_default_config && open_text_target "$CONFIG_FILE"
@@ -971,10 +1131,17 @@ open_ports_rows() {
 }
 
 print_plugin_rows() {
-  local root git_summary version_label
+  local root git_summary version_label release_status release_color latest_release
   root="$(plugin_repo_root)"
   version_label="$(plugin_version_label "$root")"
-  emit "--Version: ${version_label} | font=Menlo"
+  if [[ -z "$root" ]]; then
+    maybe_refresh_release_check
+    release_status="$(release_status_label "$version_label")"
+    release_color="$(release_status_color "$release_status")"
+    emit "--Version: ${version_label} (${release_status}) | font=Menlo color=$release_color"
+  else
+    emit "--Version: ${version_label} | font=Menlo"
+  fi
   emit "--Config: $(shorten_path "$CONFIG_FILE") | font=Menlo"
   emit "--Script: $(shorten_path "$PLUGIN_PATH") | font=Menlo"
   if [[ -n "$root" ]]; then
@@ -983,7 +1150,13 @@ print_plugin_rows() {
     emit "--Git: ${git_summary:-unknown} | font=Menlo"
     emit "----Use git commands for development updates | color=gray"
   else
-    emit "--Update to latest release | bash=$PLUGIN_PATH param1=update-release terminal=false refresh=true"
+    latest_release="$(cached_latest_release_tag 2>/dev/null || true)"
+    if [[ -n "$latest_release" && "$(release_tag_norm "$latest_release")" != "$(release_tag_norm "$version_label")" ]]; then
+      emit "--Update to $latest_release | bash=$PLUGIN_PATH param1=update-release terminal=false refresh=true"
+    else
+      emit "--Update to latest release | bash=$PLUGIN_PATH param1=update-release terminal=false refresh=true"
+    fi
+    emit "--Check plugin update status now | bash=$PLUGIN_PATH param1=check-release terminal=false refresh=true"
   fi
   [[ -f "$UPDATE_LOG" ]] && emit "--Open update log | bash=$PLUGIN_PATH param1=open param2=update-log terminal=false"
   emit "--Open config file | bash=$PLUGIN_PATH param1=open param2=agent-watch-config terminal=false refresh=true"
