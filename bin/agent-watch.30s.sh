@@ -136,6 +136,16 @@ open_target() {
   fi
 }
 
+open_text_target() {
+  local target="${1:-}"
+  [[ -z "$target" ]] && return 0
+  if command -v open >/dev/null 2>&1; then
+    open -e "$target" >/dev/null 2>&1 &
+  else
+    open_target "$target"
+  fi
+}
+
 open_app() {
   local app="${1:-}"
   if command -v open >/dev/null 2>&1; then
@@ -292,7 +302,7 @@ case "$ACTION" in
     exit 0
     ;;
   configure)
-    write_default_config && open_target "$CONFIG_FILE"
+    write_default_config && open_text_target "$CONFIG_FILE"
     exit $?
     ;;
   update-self)
@@ -301,9 +311,9 @@ case "$ACTION" in
     ;;
   open)
     case "${2:-}" in
-      agent-watch-config) write_default_config && open_target "$CONFIG_FILE" ;;
+      agent-watch-config) write_default_config && open_text_target "$CONFIG_FILE" ;;
       agent-watch-repo) open_target "$AGENTWATCH_REPO_URL" ;;
-      plugin-file) open_target "$PLUGIN_PATH" ;;
+      plugin-file) open_text_target "$PLUGIN_PATH" ;;
       codex-config) open_target "$CODEX_CONFIG" ;;
       claude-sessions) open_target "$CLAUDE_SESSIONS" ;;
       aichat-config) open_target "$AICHAT_CONFIG" ;;
