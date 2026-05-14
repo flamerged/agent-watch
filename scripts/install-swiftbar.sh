@@ -5,6 +5,11 @@ TARGET_DIR="${1:-$HOME/SwiftBarPlugins}"
 TARGET="$TARGET_DIR/agent-watch.30s.sh"
 RELEASE_ASSET_URL="${AGENTWATCH_RELEASE_ASSET_URL:-https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh}"
 
+if [[ "$RELEASE_ASSET_URL" != https://* ]]; then
+  print -u2 "refusing non-HTTPS release asset URL: $RELEASE_ASSET_URL"
+  exit 1
+fi
+
 mkdir -p "$TARGET_DIR"
 tmp="$TARGET_DIR/.agent-watch.30s.sh.$$"
 rm -f "$tmp"

@@ -6,6 +6,11 @@ PLUGIN="$ROOT/bin/agent-watch.30s.sh"
 TARGET_DIR="${1:-$HOME/SwiftBarPlugins}"
 TARGET="$TARGET_DIR/agent-watch.30s.sh"
 
+if [[ ! -f "$PLUGIN" || ! -r "$PLUGIN" ]]; then
+  print -u2 "plugin source not found or unreadable: $PLUGIN"
+  exit 1
+fi
+
 mkdir -p "$TARGET_DIR"
 ln -sf "$PLUGIN" "$TARGET"
 chmod +x "$PLUGIN"

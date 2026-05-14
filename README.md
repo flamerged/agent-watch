@@ -102,7 +102,7 @@ The plugin also supports a local config file at `~/.config/agent-watch/config.en
 | `AGENTWATCH_SHOW_BACKEND_ACTIONS` | `0` | Set to `1` to show backend web/log open actions for detected services |
 | `AGENTWATCH_REPO_DIR` | empty | Optional Agent Watch git checkout for source metadata |
 | `AGENTWATCH_REPO_URL` | `https://github.com/flamerged/agent-watch` | Project page opened from the menu |
-| `AGENTWATCH_RELEASE_ASSET_URL` | `https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh` | Latest release asset URL used by copied-plugin updates |
+| `AGENTWATCH_RELEASE_ASSET_URL` | `https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh` | HTTPS latest release asset URL used by copied-plugin updates |
 | `AGENTWATCH_UPDATE_LOG` | `$HOME/.cache/agent-watch/update.log` | Update log path |
 | `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 

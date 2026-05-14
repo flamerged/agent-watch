@@ -164,6 +164,7 @@ AGENTWATCH_REPO_DIR="${AGENTWATCH_REPO_DIR:-}"
 AGENTWATCH_REPO_URL="${AGENTWATCH_REPO_URL:-https://github.com/flamerged/agent-watch}"
 RELEASE_ASSET_URL="${AGENTWATCH_RELEASE_ASSET_URL:-https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh}"
 UPDATE_LOG="${AGENTWATCH_UPDATE_LOG:-$HOME/.cache/agent-watch/update.log}"
+UPDATE_LOG="${UPDATE_LOG/#\~/$HOME}"
 AGENTMEMORY_LOG="${AGENTWATCH_AGENTMEMORY_LOG:-$HOME/local-agentmemory/logs/agentmemory.log}"
 OMLX_URL="$(strip_slash "${AGENTWATCH_OMLX_URL:-http://127.0.0.1:8000}")"
 OLLAMA_URL="$(strip_slash "${AGENTWATCH_OLLAMA_URL:-http://127.0.0.1:11434}")"
@@ -278,6 +279,10 @@ update_plugin_from_release() {
   fi
   if [[ ! -w "$PLUGIN_PATH" || ! -w "$PLUGIN_DIR" ]]; then
     update_message "Plugin file or directory is not writable: $PLUGIN_PATH"
+    return 1
+  fi
+  if [[ "$RELEASE_ASSET_URL" != https://* ]]; then
+    update_message "Refusing non-HTTPS release asset URL: $RELEASE_ASSET_URL"
     return 1
   fi
 
