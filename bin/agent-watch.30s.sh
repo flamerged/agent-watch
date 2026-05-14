@@ -353,19 +353,23 @@ release_check_cache_age() {
 maybe_refresh_release_check() {
   truthy "$CHECK_RELEASE_UPDATES" || return
   [[ "$RELEASE_CHECK_TTL_SECONDS" == <-> ]] || RELEASE_CHECK_TTL_SECONDS=86400
-  local age now lock_age
+  local age lock_file lock_mtime current_mtime now lock_age
   age="$(release_check_cache_age)"
   if [[ -n "$age" && "$age" -le "$RELEASE_CHECK_TTL_SECONDS" ]]; then
     return
   fi
-  now="$(date +%s 2>/dev/null || emit "0")"
-  lock_age="$(file_mtime "${RELEASE_CHECK_CACHE}.lock")"
-  if [[ -n "$lock_age" && $(( now - lock_age )) -lt 120 ]]; then
-    return
-  fi
   mkdir -p "${RELEASE_CHECK_CACHE:h}" 2>/dev/null || return
-  [[ -n "$lock_age" ]] && rm -f "${RELEASE_CHECK_CACHE}.lock" 2>/dev/null || true
-  ( set -C; : > "${RELEASE_CHECK_CACHE}.lock" ) 2>/dev/null || return
+  lock_file="${RELEASE_CHECK_CACHE}.lock"
+  lock_mtime="$(file_mtime "$lock_file")"
+  if [[ -n "$lock_mtime" ]]; then
+    now="$(date +%s 2>/dev/null || emit "0")"
+    lock_age=$(( now - lock_mtime ))
+    if [[ "$lock_age" -gt 300 ]]; then
+      current_mtime="$(file_mtime "$lock_file")"
+      [[ "$current_mtime" == "$lock_mtime" ]] && rm -f "$lock_file" 2>/dev/null || true
+    fi
+  fi
+  ( set -C; : > "$lock_file" ) 2>/dev/null || return
   "$PLUGIN_PATH" check-release >/dev/null 2>&1 &
 }
 
