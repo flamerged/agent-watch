@@ -5,6 +5,8 @@ ROOT="${0:A:h:h}"
 PLUGIN="$ROOT/bin/agent-watch.30s.sh"
 
 zsh -n "$PLUGIN"
+zsh -n "$ROOT/scripts/install-swiftbar.sh"
+zsh -n "$ROOT/scripts/install-dev-swiftbar.sh"
 bash -n "$ROOT/scripts/auto-release.sh"
 
 for tag in \
@@ -31,6 +33,8 @@ for var in \
   'AGENTWATCH_SHOW_BACKEND_ACTIONS' \
   'AGENTWATCH_REPO_DIR' \
   'AGENTWATCH_REPO_URL' \
+  'AGENTWATCH_RELEASE_ASSET_URL' \
+  'AGENTWATCH_UPDATE_LOG' \
   'AGENTWATCH_INTERESTING_PORTS'; do
   grep -q "<xbar.var>.*$var" "$PLUGIN"
 done

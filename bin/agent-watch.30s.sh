@@ -18,6 +18,7 @@
 # <xbar.var>string(AGENTWATCH_REPO_DIR=""): Optional Agent Watch git checkout for source metadata</xbar.var>
 # <xbar.var>string(AGENTWATCH_REPO_URL="https://github.com/flamerged/agent-watch"): Agent Watch repository URL</xbar.var>
 # <xbar.var>string(AGENTWATCH_RELEASE_ASSET_URL="https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh"): Latest release asset URL for copied-plugin updates</xbar.var>
+# <xbar.var>string(AGENTWATCH_UPDATE_LOG="~/.cache/agent-watch/update.log"): Update log file path</xbar.var>
 # <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
 # <swiftbar.version>v0.3.0</swiftbar.version> # x-release-please-version
@@ -162,6 +163,7 @@ SWIFTBAR_PLUGIN_DIR="${AGENTWATCH_SWIFTBAR_PLUGIN_DIR:-$HOME/SwiftBarPlugins}"
 AGENTWATCH_REPO_DIR="${AGENTWATCH_REPO_DIR:-}"
 AGENTWATCH_REPO_URL="${AGENTWATCH_REPO_URL:-https://github.com/flamerged/agent-watch}"
 RELEASE_ASSET_URL="${AGENTWATCH_RELEASE_ASSET_URL:-https://github.com/flamerged/agent-watch/releases/latest/download/agent-watch.30s.sh}"
+UPDATE_LOG="${AGENTWATCH_UPDATE_LOG:-$HOME/.cache/agent-watch/update.log}"
 AGENTMEMORY_LOG="${AGENTWATCH_AGENTMEMORY_LOG:-$HOME/local-agentmemory/logs/agentmemory.log}"
 OMLX_URL="$(strip_slash "${AGENTWATCH_OMLX_URL:-http://127.0.0.1:8000}")"
 OLLAMA_URL="$(strip_slash "${AGENTWATCH_OLLAMA_URL:-http://127.0.0.1:11434}")"
@@ -245,37 +247,55 @@ plugin_version_label() {
   emit "v${PLUGIN_VERSION}"
 }
 
+log_update() {
+  mkdir -p "${UPDATE_LOG:h}" 2>/dev/null || return
+  builtin print -r -- "[$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date)] ${1:-}" >> "$UPDATE_LOG" 2>/dev/null || true
+}
+
+update_message() {
+  local message="${1:-}"
+  print "$message"
+  log_update "$message"
+}
+
 update_plugin_from_release() {
   local repo_root
+  mkdir -p "${UPDATE_LOG:h}" 2>/dev/null || true
+  log_update "=== Agent Watch release update started ==="
+  log_update "Plugin: $PLUGIN_PATH"
+  log_update "Asset: $RELEASE_ASSET_URL"
+
   repo_root="$(plugin_repo_root)"
   if [[ -n "$repo_root" && "$PLUGIN_PATH" == "$repo_root"/* ]]; then
-    print "Plugin appears to be running from a git checkout: $repo_root"
-    print "Use git commands in the checkout for development updates."
+    update_message "Plugin appears to be running from a git checkout: $repo_root"
+    update_message "Use git commands in the checkout for development updates."
     return 1
   fi
 
   if ! have "$CURL"; then
-    print "curl is required to update from the latest release."
+    update_message "curl is required to update from the latest release."
     return 1
   fi
   if [[ ! -w "$PLUGIN_PATH" || ! -w "$PLUGIN_DIR" ]]; then
-    print "Plugin file or directory is not writable: $PLUGIN_PATH"
+    update_message "Plugin file or directory is not writable: $PLUGIN_PATH"
     return 1
   fi
 
-  local tmp first_line content
+  local tmp first_line content curl_log
   tmp="${PLUGIN_DIR}/.agent-watch.30s.sh.$$"
+  curl_log="$UPDATE_LOG"
+  [[ -d "${UPDATE_LOG:h}" && -w "${UPDATE_LOG:h}" ]] || curl_log="/dev/null"
   rm -f "$tmp"
 
-  print "Downloading latest Agent Watch release asset..."
+  update_message "Downloading latest Agent Watch release asset..."
   if ! "$CURL" -fsSL \
     --connect-timeout 5 \
     --max-time 30 \
     --retry 2 \
     --retry-delay 1 \
-    "$RELEASE_ASSET_URL" -o "$tmp"; then
+    "$RELEASE_ASSET_URL" -o "$tmp" >> "$curl_log" 2>&1; then
     rm -f "$tmp"
-    print "Download failed: $RELEASE_ASSET_URL"
+    update_message "Download failed: $RELEASE_ASSET_URL"
     return 1
   fi
 
@@ -283,21 +303,21 @@ update_plugin_from_release() {
   content="$(< "$tmp")"
   if [[ "$first_line" != "#!/bin/zsh" || "$content" != *"<xbar.title>Agent Watch</xbar.title>"* || "$content" != *"PLUGIN_VERSION=\""* ]]; then
     rm -f "$tmp"
-    print "Downloaded file did not look like an Agent Watch plugin."
+    update_message "Downloaded file did not look like an Agent Watch plugin."
     return 1
   fi
 
   chmod +x "$tmp" || {
     rm -f "$tmp"
-    print "Could not mark downloaded plugin executable."
+    update_message "Could not mark downloaded plugin executable."
     return 1
   }
   mv "$tmp" "$PLUGIN_PATH" || {
     rm -f "$tmp"
-    print "Could not replace plugin file: $PLUGIN_PATH"
+    update_message "Could not replace plugin file: $PLUGIN_PATH"
     return 1
   }
-  print "Updated Agent Watch from the latest release."
+  update_message "Updated Agent Watch from the latest release."
 }
 
 update_cache_age() {
@@ -375,6 +395,7 @@ case "$ACTION" in
     case "${2:-}" in
       agent-watch-config) write_default_config && open_text_target "$CONFIG_FILE" ;;
       agent-watch-repo) open_target "$AGENTWATCH_REPO_URL" ;;
+      update-log) open_text_target "$UPDATE_LOG" ;;
       plugin-file) open_text_target "$PLUGIN_PATH" ;;
       codex-config) open_target "$CODEX_CONFIG" ;;
       claude-sessions) open_target "$CLAUDE_SESSIONS" ;;
@@ -957,8 +978,9 @@ print_plugin_rows() {
     emit "--Git: ${git_summary:-unknown} | font=Menlo"
     emit "----Use git commands for development updates | color=gray"
   else
-    emit "--Update to latest release | bash=$PLUGIN_PATH param1=update-release terminal=true refresh=true"
+    emit "--Update to latest release | bash=$PLUGIN_PATH param1=update-release terminal=false refresh=true"
   fi
+  [[ -f "$UPDATE_LOG" ]] && emit "--Open update log | bash=$PLUGIN_PATH param1=open param2=update-log terminal=false"
   emit "--Open config file | bash=$PLUGIN_PATH param1=open param2=agent-watch-config terminal=false refresh=true"
   emit "--Open project page | bash=$PLUGIN_PATH param1=open param2=agent-watch-repo terminal=false"
   emit "--Open plugin file | bash=$PLUGIN_PATH param1=open param2=plugin-file terminal=false"
