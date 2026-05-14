@@ -11,6 +11,7 @@ It is built for local agent-heavy development setups with tools such as Codex, C
 - Groups known MCP/helper processes by owner and type, with per-process debug output behind `AGENTWATCH_SHOW_HELPERS=1`.
 - Shows installed coding CLIs and versions when they are discoverable on `PATH`.
 - Supports cached update checks for npm-distributed CLIs; checks are spaced by `AGENTWATCH_UPDATE_TTL_SECONDS`.
+- Shows the Agent Watch plugin version and, when installed from a git checkout, an update action.
 - Hides process command lines by default. Optional redacted command output can be enabled with `AGENTWATCH_SHOW_COMMANDS=1`.
 - Uses only local process inspection and local HTTP endpoints by default.
 
@@ -73,6 +74,8 @@ Agent Watch works without configuration, but these environment variables can tai
 | `AGENTWATCH_UPDATE_CACHE` | `$HOME/.cache/agent-watch/cli-updates.tsv` | Update check cache path |
 | `AGENTWATCH_SHOW_CONFIG_ACTIONS` | `0` | Set to `1` to show local config-file open actions |
 | `AGENTWATCH_SHOW_BACKEND_ACTIONS` | `0` | Set to `1` to show backend web/log open actions for detected services |
+| `AGENTWATCH_REPO_DIR` | empty | Optional Agent Watch git checkout for self-update actions |
+| `AGENTWATCH_REPO_URL` | `https://github.com/flamerged/agent-watch` | Project page opened from the menu |
 | `AGENTWATCH_INTERESTING_PORTS` | `8000,11434,3000,4000,5000` | Comma-separated TCP listening ports to show |
 
 ## Privacy And Security
@@ -88,6 +91,8 @@ Update checks are enabled by default. Agent Watch uses package registry lookups 
 The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to adjust that interval, or use the menu action to refresh the cache manually.
 
 The "Interesting Listening Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
+
+The Agent Watch section shows the plugin version and script path. If the plugin can detect a git checkout, it also shows the branch/commit and an `Update from git` action. If the plugin was copied instead of symlinked from a checkout, set `AGENTWATCH_REPO_DIR` to the checkout path or update the copied script manually.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 

@@ -14,6 +14,8 @@
 # <xbar.var>string(AGENTWATCH_UPDATE_TTL_SECONDS="86400"): Seconds between update checks when enabled</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_CONFIG_ACTIONS=false): Show config-file open actions</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_BACKEND_ACTIONS=false): Show detected backend web/log open actions</xbar.var>
+# <xbar.var>string(AGENTWATCH_REPO_DIR=""): Optional Agent Watch git checkout for self-update actions</xbar.var>
+# <xbar.var>string(AGENTWATCH_REPO_URL="https://github.com/flamerged/agent-watch"): Agent Watch repository URL</xbar.var>
 # <xbar.var>string(AGENTWATCH_INTERESTING_PORTS="8000,11434,3000,4000,5000"): TCP ports to show</xbar.var>
 # <swiftbar.title>Agent Watch</swiftbar.title>
 # <swiftbar.version>v0.1.0</swiftbar.version> # x-release-please-version
@@ -22,6 +24,10 @@
 # <swiftbar.refresh>30s</swiftbar.refresh>
 
 set -u
+
+PLUGIN_VERSION="0.1.0" # x-release-please-version
+PLUGIN_PATH="${0:A}"
+PLUGIN_DIR="${PLUGIN_PATH:h}"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 for extra_bin in "$HOME/.bun/bin" "$HOME/.cargo/bin" "$HOME/.local/share/mise/shims" "$HOME/.asdf/shims"; do
@@ -84,6 +90,8 @@ CLAUDE_SESSIONS="${AGENTWATCH_CLAUDE_SESSIONS:-$HOME/.claude/sessions}"
 AICHAT_CONFIG="${AGENTWATCH_AICHAT_CONFIG:-$HOME/Library/Application Support/aichat/config.yaml}"
 OPENCODE_CONFIG="${AGENTWATCH_OPENCODE_CONFIG:-$HOME/.config/opencode/opencode.json}"
 SWIFTBAR_PLUGIN_DIR="${AGENTWATCH_SWIFTBAR_PLUGIN_DIR:-$HOME/SwiftBarPlugins}"
+AGENTWATCH_REPO_DIR="${AGENTWATCH_REPO_DIR:-}"
+AGENTWATCH_REPO_URL="${AGENTWATCH_REPO_URL:-https://github.com/flamerged/agent-watch}"
 AGENTMEMORY_LOG="${AGENTWATCH_AGENTMEMORY_LOG:-$HOME/local-agentmemory/logs/agentmemory.log}"
 OMLX_URL="$(strip_slash "${AGENTWATCH_OMLX_URL:-http://127.0.0.1:8000}")"
 OLLAMA_URL="$(strip_slash "${AGENTWATCH_OLLAMA_URL:-http://127.0.0.1:11434}")"
@@ -116,6 +124,50 @@ truthy() {
     1|true|TRUE|yes|YES|on|ON) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+plugin_repo_root() {
+  command -v git >/dev/null 2>&1 || return
+  local candidate="${AGENTWATCH_REPO_DIR:-}"
+  if [[ -n "$candidate" ]] && git -C "$candidate" rev-parse --show-toplevel >/dev/null 2>&1; then
+    git -C "$candidate" rev-parse --show-toplevel 2>/dev/null
+    return
+  fi
+  candidate="${PLUGIN_DIR:h}"
+  if git -C "$candidate" rev-parse --show-toplevel >/dev/null 2>&1; then
+    git -C "$candidate" rev-parse --show-toplevel 2>/dev/null
+  fi
+}
+
+plugin_git_summary() {
+  local root="$1" branch sha upstream counts ahead behind dirty state
+  command -v git >/dev/null 2>&1 || return
+  branch="$(git -C "$root" branch --show-current 2>/dev/null)"
+  sha="$(git -C "$root" rev-parse --short HEAD 2>/dev/null)"
+  upstream="$(git -C "$root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"
+  dirty="$(git -C "$root" status --porcelain 2>/dev/null)"
+  state=""
+  if [[ -n "$upstream" ]]; then
+    counts="$(git -C "$root" rev-list --left-right --count HEAD..."$upstream" 2>/dev/null)"
+    ahead="${counts%%[[:space:]]*}"
+    behind="${counts##*[[:space:]]}"
+    [[ -n "$ahead" && "$ahead" != "0" ]] && state="${state}, ${ahead} ahead"
+    [[ -n "$behind" && "$behind" != "0" ]] && state="${state}, ${behind} behind"
+  fi
+  [[ -n "$dirty" ]] && state="${state}, dirty"
+  emit "${branch:-detached} ${sha:-unknown}${state}"
+}
+
+update_plugin_from_git() {
+  local root
+  root="$(plugin_repo_root)"
+  if [[ -z "$root" ]]; then
+    print "No Agent Watch git checkout found."
+    print "Set AGENTWATCH_REPO_DIR to your checkout, or update the copied plugin file manually."
+    return 1
+  fi
+  print "Updating Agent Watch in $root"
+  git -C "$root" pull --ff-only
 }
 
 update_cache_age() {
@@ -181,8 +233,14 @@ case "$ACTION" in
     write_update_cache
     exit 0
     ;;
+  update-self)
+    update_plugin_from_git
+    exit $?
+    ;;
   open)
     case "${2:-}" in
+      agent-watch-repo) open_target "$AGENTWATCH_REPO_URL" ;;
+      plugin-file) open_target "$PLUGIN_PATH" ;;
       codex-config) open_target "$CODEX_CONFIG" ;;
       claude-sessions) open_target "$CLAUDE_SESSIONS" ;;
       aichat-config) open_target "$AICHAT_CONFIG" ;;
@@ -751,6 +809,24 @@ open_ports_rows() {
     done
 }
 
+print_plugin_rows() {
+  local root git_summary
+  emit "--Version: v${PLUGIN_VERSION} | font=Menlo"
+  emit "--Script: $(shorten_path "$PLUGIN_PATH") | font=Menlo"
+  root="$(plugin_repo_root)"
+  if [[ -n "$root" ]]; then
+    git_summary="$(plugin_git_summary "$root")"
+    emit "--Repo: $(shorten_path "$root") | font=Menlo"
+    emit "--Git: ${git_summary:-unknown} | font=Menlo"
+    emit "--Update from git | bash=$PLUGIN_PATH param1=update-self terminal=true refresh=true"
+  else
+    emit "--No git checkout detected | color=gray"
+    emit "----Set AGENTWATCH_REPO_DIR to enable git updates | color=gray"
+  fi
+  emit "--Open project page | bash=$PLUGIN_PATH param1=open param2=agent-watch-repo terminal=false"
+  emit "--Open plugin file | bash=$PLUGIN_PATH param1=open param2=plugin-file terminal=false"
+}
+
 agent_count="${#AGENT_PIDS[@]}"
 mcp_count="${#MCP_PIDS[@]}"
 local_backend_count=0
@@ -857,6 +933,10 @@ if [[ -n "$INTERESTING_PORTS" ]]; then
   emit "--Filter: ${INTERESTING_PORTS} | color=gray"
   open_ports_rows
 fi
+
+emit "---"
+emit "Agent Watch"
+print_plugin_rows
 
 emit "---"
 emit "Actions"

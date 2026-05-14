@@ -27,6 +27,8 @@ for var in \
   'AGENTWATCH_UPDATE_TTL_SECONDS' \
   'AGENTWATCH_SHOW_CONFIG_ACTIONS' \
   'AGENTWATCH_SHOW_BACKEND_ACTIONS' \
+  'AGENTWATCH_REPO_DIR' \
+  'AGENTWATCH_REPO_URL' \
   'AGENTWATCH_INTERESTING_PORTS'; do
   grep -q "<xbar.var>.*$var" "$PLUGIN"
 done
@@ -42,6 +44,7 @@ output="$(
 
 print -r -- "$output" | grep -q '^Agent Clients$'
 print -r -- "$output" | grep -q '^Local LLM / Memory Backends$'
+print -r -- "$output" | grep -q '^Agent Watch$'
 if print -r -- "$output" | grep -q 'Command:'; then
   print -u2 "command lines should be hidden by default"
   exit 1
