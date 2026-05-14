@@ -6,6 +6,7 @@
 # <xbar.desc>Shows local coding agents, model/provider targets, folders, versions, helper processes, and local LLM backends.</xbar.desc>
 # <xbar.dependencies>zsh, ps, lsof, curl, jq</xbar.dependencies>
 # <xbar.abouturl>https://github.com/flamerged/agent-watch</xbar.abouturl>
+# <xbar.var>string(AGENTWATCH_CONFIG_FILE="~/.config/agent-watch/config.env"): Agent Watch config file path</xbar.var>
 # <xbar.var>string(AGENTWATCH_OMLX_URL="http://127.0.0.1:8000"): oMLX server URL</xbar.var>
 # <xbar.var>string(AGENTWATCH_OLLAMA_URL="http://127.0.0.1:11434"): Ollama server URL</xbar.var>
 # <xbar.var>boolean(AGENTWATCH_SHOW_COMMANDS=false): Show redacted process commands</xbar.var>
@@ -28,6 +29,63 @@ set -u
 PLUGIN_VERSION="0.2.0" # x-release-please-version
 PLUGIN_PATH="${0:A}"
 PLUGIN_DIR="${PLUGIN_PATH:h}"
+CONFIG_FILE="${AGENTWATCH_CONFIG_FILE:-$HOME/.config/agent-watch/config.env}"
+
+trim_space() {
+  local value="${1:-}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  builtin print -r -- "$value"
+}
+
+load_config_file() {
+  [[ -f "$CONFIG_FILE" ]] || return
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    line="$(trim_space "$line")"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ "$line" == export[[:space:]]* ]]; then
+      line="$(trim_space "${line#export}")"
+    fi
+    [[ "$line" == *"="* ]] || continue
+    key="$(trim_space "${line%%=*}")"
+    value="$(trim_space "${line#*=}")"
+    [[ "$key" == AGENTWATCH_[A-Z0-9_]* ]] || continue
+    printenv "$key" >/dev/null 2>&1 && continue
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value[2,-2]}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+      value="${value[2,-2]}"
+    fi
+    export "$key=$value"
+  done < "$CONFIG_FILE"
+}
+
+write_default_config() {
+  mkdir -p "${CONFIG_FILE:h}" 2>/dev/null || return 1
+  [[ -f "$CONFIG_FILE" ]] && return 0
+  {
+    builtin print -r -- "# Agent Watch config"
+    builtin print -r -- "# Use KEY=value lines. Only AGENTWATCH_* keys are loaded."
+    builtin print -r -- "# Environment variables passed by the launcher override this file."
+    builtin print -r -- ""
+    builtin print -r -- "# Ports shown in the Watched Local Ports section."
+    builtin print -r -- "AGENTWATCH_INTERESTING_PORTS=\"8000,11434,3000,4000,5000\""
+    builtin print -r -- ""
+    builtin print -r -- "# CLI update checks are cached and spaced by this TTL."
+    builtin print -r -- "AGENTWATCH_CHECK_UPDATES=true"
+    builtin print -r -- "AGENTWATCH_UPDATE_TTL_SECONDS=86400"
+    builtin print -r -- ""
+    builtin print -r -- "# Uncomment these when you want extra debug or local actions."
+    builtin print -r -- "# AGENTWATCH_SHOW_HELPERS=true"
+    builtin print -r -- "# AGENTWATCH_SHOW_COMMANDS=true"
+    builtin print -r -- "# AGENTWATCH_SHOW_CONFIG_ACTIONS=true"
+    builtin print -r -- "# AGENTWATCH_SHOW_BACKEND_ACTIONS=true"
+  } > "$CONFIG_FILE"
+}
+
+load_config_file
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 for extra_bin in "$HOME/.bun/bin" "$HOME/.cargo/bin" "$HOME/.local/share/mise/shims" "$HOME/.asdf/shims"; do
@@ -233,12 +291,17 @@ case "$ACTION" in
     write_update_cache
     exit 0
     ;;
+  configure)
+    write_default_config && open_target "$CONFIG_FILE"
+    exit $?
+    ;;
   update-self)
     update_plugin_from_git
     exit $?
     ;;
   open)
     case "${2:-}" in
+      agent-watch-config) write_default_config && open_target "$CONFIG_FILE" ;;
       agent-watch-repo) open_target "$AGENTWATCH_REPO_URL" ;;
       plugin-file) open_target "$PLUGIN_PATH" ;;
       codex-config) open_target "$CODEX_CONFIG" ;;
@@ -812,6 +875,7 @@ open_ports_rows() {
 print_plugin_rows() {
   local root git_summary
   emit "--Version: v${PLUGIN_VERSION} | font=Menlo"
+  emit "--Config: $(shorten_path "$CONFIG_FILE") | font=Menlo"
   emit "--Script: $(shorten_path "$PLUGIN_PATH") | font=Menlo"
   root="$(plugin_repo_root)"
   if [[ -n "$root" ]]; then
@@ -823,6 +887,7 @@ print_plugin_rows() {
     emit "--No git checkout detected | color=gray"
     emit "----Set AGENTWATCH_REPO_DIR to enable git updates | color=gray"
   fi
+  emit "--Open config file | bash=$PLUGIN_PATH param1=open param2=agent-watch-config terminal=false refresh=true"
   emit "--Open project page | bash=$PLUGIN_PATH param1=open param2=agent-watch-repo terminal=false"
   emit "--Open plugin file | bash=$PLUGIN_PATH param1=open param2=plugin-file terminal=false"
 }
@@ -929,7 +994,7 @@ fi
 
 if [[ -n "$INTERESTING_PORTS" ]]; then
   emit "---"
-  emit "Interesting Listening Ports"
+  emit "Watched Local Ports"
   emit "--Filter: ${INTERESTING_PORTS} | color=gray"
   open_ports_rows
 fi

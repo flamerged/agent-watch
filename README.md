@@ -55,8 +55,11 @@ brew install jq
 
 Agent Watch works without configuration, but these environment variables can tailor it to your setup:
 
+The plugin also supports a local config file at `~/.config/agent-watch/config.env`. Open or create it from the `Agent Watch` menu section with `Open config file`. The file accepts simple `AGENTWATCH_KEY=value` lines; it is parsed as data and is not sourced as shell code. Environment variables supplied by the launcher override values from this file.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `AGENTWATCH_CONFIG_FILE` | `$HOME/.config/agent-watch/config.env` | Agent Watch config file path |
 | `AGENTWATCH_CODEX_CONFIG` | `$HOME/.codex/config.toml` | Codex config path |
 | `AGENTWATCH_CLAUDE_SESSIONS` | `$HOME/.claude/sessions` | Claude Code session metadata directory |
 | `AGENTWATCH_AICHAT_CONFIG` | `$HOME/Library/Application Support/aichat/config.yaml` | aichat config path |
@@ -90,9 +93,9 @@ Update checks are enabled by default. Agent Watch uses package registry lookups 
 
 The default update-check TTL is one day. Set `AGENTWATCH_UPDATE_TTL_SECONDS` to adjust that interval, or use the menu action to refresh the cache manually.
 
-The "Interesting Listening Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
+The "Watched Local Ports" section is controlled by `AGENTWATCH_INTERESTING_PORTS`. By default it watches the configured oMLX port, the configured Ollama port, and common local development ports `3000`, `4000`, and `5000`.
 
-The Agent Watch section shows the plugin version and script path. If the plugin can detect a git checkout, it also shows the branch/commit and an `Update from git` action. If the plugin was copied instead of symlinked from a checkout, set `AGENTWATCH_REPO_DIR` to the checkout path or update the copied script manually.
+The Agent Watch section shows the plugin version, config path, and script path. If the plugin can detect a git checkout, it also shows the branch/commit and an `Update from git` action. If the plugin was copied instead of symlinked from a checkout, set `AGENTWATCH_REPO_DIR` to the checkout path or update the copied script manually.
 
 Local config files may reveal model names, provider URLs, and project paths in the menu output. Do not screen-share the menu if those are sensitive.
 
